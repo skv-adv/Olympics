@@ -1,0 +1,101 @@
+---
+title: "Project Data Scraping"
+author: "Cheryl Allen-Munley"
+date: "4/10/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(rvest)
+library(jsonlite)
+library(httr) # httr: Tools for Working with URLs and HTTP 
+library(curl) 
+library (dplyr)
+library (ggplot2)
+library (topicmodels)
+```
+
+## Scrapings from Wikipedia Olympic Data
+
+```{r}
+#Marathon
+
+athletics_url <- 
+  "https://en.wikipedia.org/wiki/Marathon" 
+
+# extract tables
+athletics_tables <- athletics_url%>%
+  read_html() %>%
+  html_nodes("table")%>%
+  html_table(fill=TRUE)
+head(athletics_tables)
+
+marathon_m <- athletics_tables[[5]]
+marathon_m
+marathon_w <- athletics_tables[[6]]
+marathon_w
+```
+
+```{r}
+#100 Meter Dash
+
+athletics_url <- 
+  "https://en.wikipedia.org/wiki/100_metres" 
+
+# extract tables
+athletics_tables <- athletics_url%>%
+  read_html() %>%
+  html_nodes("table")%>%
+  html_table(fill=TRUE)
+head(athletics_tables,20)
+
+hundred_metres_m <- athletics_tables[[7]]
+hundred_metres_m 
+hundred_metres_w  <- athletics_tables[[8]]
+hundred_metres_w 
+```
+
+```{r}
+
+#High Jump
+
+athletics_url <- 
+  "https://en.wikipedia.org/wiki/High_jump" 
+
+# extract tables
+athletics_tables <- athletics_url%>%
+  read_html() %>%
+  html_nodes("table")%>%
+  html_table(fill=TRUE)
+head(athletics_tables,20)
+
+high_jump_m <- athletics_tables[[15]]
+high_jump_m 
+high_jump_w  <- athletics_tables[[8]]
+high_jump_w 
+```
+```{r}
+#Steeplechase
+
+athletics_url <- 
+  "https://en.wikipedia.org/wiki/Marathon" 
+
+# extract tables
+athletics_tables <- athletics_url%>%
+  read_html() %>%
+  html_nodes("table")%>%
+  html_table(fill=TRUE)
+head(athletics_tables)
+
+steeplechase_m <- athletics_tables[[6]]
+steeplechase_m
+steeplechase_w <- athletics_tables[[7]]
+steeplechase_w
+```
+
