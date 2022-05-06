@@ -1,0 +1,1730 @@
+---
+title: "Data Wrangling"
+project: Women's Participation in Olympics
+Date of presentation: 05/02/200
+output:
+  html_document: default
+Date: 4/30/2022
+authors: Kalaivani,Sahitee,Cheryl
+---
+```{r library, echo=TRUE, message=FALSE, warning=FALSE}
+library(httr)
+library(curl)
+library(ggplot2)
+library(plotly)
+library(plyr)
+library(stringr)
+library(sqldf)
+library(dplyr)
+library(tidytext)
+library(tidyverse)
+library(gganimate)
+library(readxl)
+library(rvest)
+library(lubridate)
+library(stringi)
+library(rvest)
+library(jsonlite)
+library(choroplethr)
+library(choroplethrMaps)
+library(rlang)
+library(topicmodels)
+```
+The usecase numbers are aligned with the slides presentation. 
+```{r usecase1, echo=TRUE,warning=FALSE,message=FALSE}
+library(readxl)
+library(dplyr)
+kaggle_data <-readxl::read_excel("athlete_events.xlsx")
+#Usecase 1 : Growth in the number of sports and events in Summer & Winter Games – Kaggle Data range from 1896 to 2016
+Usecase_1 <- kaggle_data %>% distinct(Year,Season,Sport)
+Usecase_1 <- Usecase_1 %>% select(Year,Season) %>% dplyr::arrange(Year,Season) %>% dplyr::count(Year,Season) %>% dplyr::rename(freq=n)
+plot <- plot_ly(data = Usecase_1, x = ~Year, y = ~freq, type = 'scatter',
+        marker = list(size = 10,
+                      color = 'green',
+                      line = list(color = 'orange',
+                                  width = 2)))
+plot <- plot_ly() %>%
+  add_trace( data = dplyr::filter(Usecase_1,Season == "Summer"),
+             x = ~Year, y = ~freq, type = 'scatter', 
+             name = 'Summer Sports',
+             marker = list(size = 10,
+                           color = 'red',
+                           line = list(color = 'green',
+                                       width = 2))) %>%
+  add_trace( data = dplyr::filter(Usecase_1,Season == "Winter"),
+             x = ~Year, y = ~freq, type = 'scatter', 
+             name = 'Winert Sports',
+             marker = list(size = 10,
+                           color = 'yellow',
+                           line = list(color = 'green',
+                                       width = 2)))
+plot <- plot %>% layout(title = 'Number of Summer Vs Winter sport Olympics since 1920',
+                      plot_bgcolor = "#e5ecf6",scale_fill_brewer(palette = "RdYlGn"),
+                      yaxis = list(zeroline = FALSE, title = "Year of Olympics"),
+                      xaxis = list(zeroline = FALSE, title = "Number of Sports"),
+                      legend = list(title=list(text='Legend Title')))
+ggplotly(plot)
+
+#From the plot we can see that the growth in the number of winter sports is very less when compared to the summer sports, and this is due to weather, ease of hosting and the audience turn out not being on the side of winter sports
+```
+```{r usecase2, echo=TRUE,warning=FALSE}
+#2. Gender Participation in Olympics – Kaggle Data range from 1896 to 2016
+data(df_pop_country)
+kaggle_data <-  readxl::read_excel("athlete_events.xlsx")
+Usecase_2 <- kaggle_data %>% select(Team,Sex) 
+Usecase_2 %>% filter(Team == "united states of america")
+Usecase_2 <- Usecase_2 %>% 
+  mutate(Team = str_extract(Team,"[a-zA-Z' ']+")) %>% 
+  mutate(Team = str_to_lower(Team,"[a-zA-Z]+"))
+Usecase_2$Team <- str_replace(Usecase_2$Team, "united states","united states of america")
+Usecase_2 %>% filter(Team == "united states of america")
+#2.	Nations (in terms of numbers) participating in Olympics to identify gender distribution 
+result_df <- sqldf("select Team as region, Sex, count(Sex) as value from Usecase_2 Group by Team,Sex")
+Usecase_2 <- as_tibble(result_df)
+Usecase_2_M <- Usecase_2 %>% filter(Sex == 'M') %>% select(1,3)
+Usecase_2_M <- inner_join(df_pop_country,Usecase_2_M, by = 'region') %>% select(1,3) 
+Usecase_2_M <- as_tibble(Usecase_2_M)
+Usecase_2_M <- dplyr::rename(Usecase_2_M,value = value.y)
+head(Usecase_2_M)
+Usecase_2_M %>% filter(region == "china")
+country_choropleth(Usecase_2_M)
+
+Usecase_2_F <- Usecase_2 %>% filter(Sex == 'F') %>% select(1,3)
+Usecase_2_F <- inner_join(df_pop_country,Usecase_2_F, by = 'region') %>% select(1,3) 
+Usecase_2_F <- as_tibble(Usecase_2_F)
+Usecase_2_F <- dplyr::rename(Usecase_2_F,value = value.y)
+head(Usecase_2_F)
+Usecase_2_F %>% filter(region == "china")
+country_choropleth(Usecase_2_F)
+
+# The Chloropleth plots of Men and women participation show differences in the scale due to 
+# women entering Olympics later than men. We can also see that there are cases where the men participation is much higher than women participation (like Denmark) or where women participation better than men's participation (like China)
+```
+```{r usecase3, echo=TRUE, message=FALSE, warning=FALSE}
+## usecase3 : Medal Summary by Nations
+url <- "https://en.wikipedia.org/wiki/Swimming_at_the_Summer_Olympics"
+extractdata <- url %>% read_html() %>% html_table(fill = TRUE)
+Swimming_Medal_Summary_byNations <- extractdata[[11]] %>% select(2,6)
+head(Swimming_Medal_Summary_byNations)
+
+url <- "https://en.wikipedia.org/wiki/List_of_Olympic_medalists_in_speed_skating"
+extract <- url %>% read_html() %>% html_table(fill = TRUE)
+Skating_medal_summary <- extract[[34]] %>% select(Country,Total)
+head(Skating_medal_summary)
+
+Swimming_Medal_Summary <- Swimming_Medal_Summary_byNations
+Swimming_Medal_Summary <- dplyr::rename(Swimming_Medal_Summary,Country = Nation)
+Swimming_Medal_Summary <- Swimming_Medal_Summary %>% arrange(Total) %>% head(-1)
+Swimming_Medal_Summary <- Swimming_Medal_Summary %>%
+  mutate(Country = str_extract(Country, "[a-zA-Z' ']+"))
+Swimming_Medal_Summary <- Swimming_Medal_Summary %>% mutate(Sport = "Swimming")
+head(Swimming_Medal_Summary)
+Skating_medal_summary$Total <- as.integer(Skating_medal_summary$Total)
+Skating_medal_summary <- Skating_medal_summary %>% na.omit()
+Skating_medal_summary <- Skating_medal_summary %>%
+  mutate(Country = str_extract(Country, "[a-zA-Z' ']+"))
+Skating_medal_summary <- Skating_medal_summary %>% mutate(Sport = "Skating")
+tail(Skating_medal_summary)  
+Extract <- bind_rows(Swimming_Medal_Summary,Skating_medal_summary) 
+Extract <- Extract %>% arrange(Country,Sport)
+
+Extract %>% 
+  ggplot(aes( x = reorder(Country,Total,sum), y= Total, fill=Sport,
+              label = Total)) +
+  geom_bar(stat="identity")+ xlab(NULL) +coord_flip() +
+  geom_text(size = 3, position = position_stack(vjust = 0.5)) +
+  xlab("Country") + ylab("Total number of Medals")
+
+#The graph gives visualization of the total medals won by countries across the world in skating and swimming and at the same time the graph
+#Observation from the graph: USA is obviously standing out with the medal count. 
+#A section of nations have been performing well consistently where as another section of nations have been performing not so very well at all
+#Through the same graph we can see the overall performance as well the as the performance 
+# for each sport at the same time
+```
+```{r usecase4,  echo=TRUE, message=FALSE, warning=FALSE}
+##4:Male vs Female participation over time in Olympics. – Input Kaggle – Year, Gender 
+rm(Medal_Summary_byGender)
+library(readxl)
+Medal_Summary_byGender <- readxl::read_excel("athlete_events.xlsx")
+Medal_Summary_byGender <- Medal_Summary_byGender %>% filter(Sport != "Art Competitions")
+## Year" for summer and winter
+original <- c(1994,1998,2002,2006,2010,2014)
+new <- c(1996,2000,2004,2008,2012,2016,2020)
+for (i in 1:length(original)) {
+  Medal_Summary_byGender$Year <- gsub(original[i], new[i], Medal_Summary_byGender$Year)
+}
+Medal_Summary_byGender$Year <- as.integer(Medal_Summary_byGender$Year)
+## Table counting number of athletes by Year and Sex
+count_byGender <- Medal_Summary_byGender %>% group_by(Year, Sex) %>% select(Year,Sex) %>% count() %>% dplyr::rename(Count=n)
+
+count_byGender$Year <- as.integer(count_byGender$Year)
+count_byGender <- count_byGender %>%  dplyr::arrange(desc(Count))
+## Plot number of male/female athletes vs time
+Plot_gender_distribution <- ggplot(count_byGender, aes(x=Year, y=Count, group=(Sex), color=Sex)) +
+  geom_point(size=3) +
+  geom_line() +
+  scale_color_manual(values=c("darkgreen","Orange")) +
+  labs(x = "Year", y = "Olympians Count",title = "Number of Male and Female Olympians Participation over time in Years")
+Plot_gender_distribution
+##here is a clear increase in the inclusion of the female after 1950 in competitions, however, the male participation is erratic.
+##Zero Female Participation in 7 games. ex: Jeu De Paume,Lacrosse,Military Ski Patrol,Polo,Racquets,Roque,Tug-Of-War
+##Zero Male participation in Rhythmic Gymnastics.
+
+```
+```{r usecase5,  echo=TRUE, message=FALSE, warning=FALSE}
+#	Male vs Female participation over time in Olympics Medal summary
+rm(Medal_Summary_bynations)
+library(readxl)
+Medal_Summary_bynations<- readxl::read_excel("athlete_events.xlsx")
+Medal_Summary_bynations <- Medal_Summary_bynations  %>%   filter(Medal != "NA")  %>%  na.omit()
+Medal_Summary_bynations <- Medal_Summary_bynations %>%  filter(Sport != "Art Competitions")  %>%
+                           dplyr::rename(region = Team)  %>%
+                           group_by(NOC, Medal, Sport, Year,Sex,region) %>% summarise(isMedal=1) %>%
+                           dplyr::arrange(Medal,Year)
+
+Medal_Summary_bynations <-  Medal_Summary_bynations %>% group_by(Medal,Sex,Year) %>%
+                            summarise(Count= sum(isMedal)) %>%  dplyr::arrange(Year)
+
+
+# TOTAL MEDAL COUNT for Male by Year over time
+Medal_Summary_bynations_Male  <- Medal_Summary_bynations %>% filter(Sex == "M") %>%
+  group_by(Medal,Year,Sex) %>% summarise(Total=sum(Count)) %>% dplyr::arrange(desc(Medal))
+
+## Plot
+plot_Male <- ggplot(data=Medal_Summary_bynations_Male, aes(Year,Total ,  color=Medal)) + 
+  geom_point() + ggtitle("Number of Male Olympians Participation over time in Years") +
+  geom_smooth() 
+plot_Male
+
+# TOTAL MEDAL COUNT for Female by Year over time
+Medal_Summary_bynations_Female  <- Medal_Summary_bynations %>% filter(Sex == "F") %>%
+  group_by(Medal,Year,Sex) %>% summarise(Total=sum(Count)) %>% dplyr::arrange(desc(Medal))
+
+plot_Female <- ggplot(data= Medal_Summary_bynations_Female, aes(Year,Total,color=Medal)) +
+  geom_point() +  ggtitle("Number of female Olympians Participation over time in Years") +
+  geom_smooth()
+plot_Female
+## Female participations started increasing after 1976 with 12 teams bringing in at least 25% women.
+##In 1992, the winter sports are separated which skews the trends for both.
+##Medal Dominations by country: American women : 2016
+##East German & Soviet Women : 1976
+##Germany women : 1936
+```
+```{r usecase6,  echo=TRUE, message=FALSE, warning=FALSE}
+##6.	Locations of Olympics by year choloropleth - Male Vs Female
+rm(Olympic_Games_host_cities)
+rm(Olympic_Games_host_cities_1)
+Olympic_Games_host_cities <- "https://en.wikipedia.org/wiki/List_of_Olympic_Games_host_cities"
+Olympic_Games_host_cities <- Olympic_Games_host_cities[1] %>% read_html() %>% html_table(fill = TRUE)
+Olympic_Games_host_cities_1 <- Olympic_Games_host_cities[[2]]  %>% select(2,3,4,6,7)
+Olympic_Games_host_cities_df <- as.data.frame(Olympic_Games_host_cities_1)
+Olympic_Games_host_cities_df_summer <- Olympic_Games_host_cities_df %>% 
+                                      arrange(Year)
+Olympic_Games_host_cities_df_summer <- Olympic_Games_host_cities_df_summer %>% dplyr::rename(region=Country)
+Olympic_Games_host_cities_df_summer$region = tolower(Olympic_Games_host_cities_df_summer$region )
+Olympic_Games_host_cities_df_summer[Olympic_Games_host_cities_df_summer$region=="soviet union[h]", "region"] <- "russia"
+Olympic_Games_host_cities_df_summer[Olympic_Games_host_cities_df_summer$region=="russia[h]", "region"] <- "russia"
+Olympic_Games_host_cities_df_summer <- Olympic_Games_host_cities_df_summer %>% 
+  dplyr::rename(value=Year)
+Olympic_Games_host_cities_df_summer <- Olympic_Games_host_cities_df_summer %>% select(2,3)
+Olympic_Games_host_cities_df_summer <- Olympic_Games_host_cities_df_summer %>% arrange(region,value) %>% 
+                                       dplyr::count(region) %>% dplyr::rename(value = n)
+Olympic_Games_host_cities_df_summer$region <- str_replace(Olympic_Games_host_cities_df_summer$region, "united states","united states of america")
+country_choropleth(Olympic_Games_host_cities_df_summer,num_colors=5 ) + 
+scale_fill_brewer(palette="YlOrRd") +
+  labs(title = "Countries hosted Olympics",
+       subtitle = "Year range",
+       caption = "source: https://en.wikipedia.org/wiki/List_of_Olympic_Games_host_cities")
+
+```
+
+My first task was to extract the Kaggle data and filter for my sport:Athlectics (Track & Field).  The Kaggle table provides important information about the contestants and the event, but with one glaring ommission: Kaggle does not include the performance (time, height, score, etc.) of the actual event.  For this reason, additional data had to be scraped from Wikipedia.
+
+```{r}
+kaggle_athletics <- read_excel("athlete_events.xlsx")%>%
+filter(Sport == "Athletics")
+head(kaggle_athletics)
+```
+
+Wikipedia has separate sites for each Olympic year with separate tables, which varied by year, for male and female performance.  To join the Wikipedia data with Kaggle, we first had to scrape it from the Wikipedia site, rename the columns, clean the event fields in both the Kaggle and Wikipedia files, so that they would match.  
+
+To do this, We created the "olympic_join" function function that accepted year, Wikipedia URL, table number (varied by year) and gender.  The join resulted in two combined files ("M" and "F") for Gold, Silver and Bronze for each Olympic year.
+
+```{r}
+olympic_join = function(func_year, func_url,table_num,gender) {
+#Get the Kaggle files and remove the prefixes "Athletics Men's" and Athletics Women's from the event field.
+  kaggle_athletics_year <- kaggle_athletics%>%
+  filter(Sex == gender, Year == func_year) %>% arrange(Year) %>%
+  mutate(Event = trimws(str_replace_all(Event, "Athletics Men's", ""))) %>%
+  mutate(Event = trimws(str_replace_all(Event, "Athletics Women's", ""))) 
+  
+#Scrape the data from Wikipedia given the functional year.
+  athletics_year <- func_url%>%
+  read_html() %>%
+  html_nodes("table")%>%
+  html_table(fill=TRUE)
+  
+#rename columns to guaranty first column is always "Event" even if column title changes for each Olympic year, and each of the pairs of name and performance for each medal is titled "Name" and "Time."
+wiki_year <- athletics_year[[table_num]]
+colnames(wiki_year)[1] <- "Event"
+colnames(wiki_year)[2] <- "Name"
+colnames(wiki_year)[3] <- "Time"
+colnames(wiki_year)[4] <- "Name"
+colnames(wiki_year)[5] <- "Time"
+colnames(wiki_year)[6] <- "Name"
+colnames(wiki_year)[7] <- "Time"
+
+#Clean field on Wiki, removing "details". Join with Kaggle for gold medalists (rank =1).
+wiki_year_g<- wiki_year %>%
+  select (1:3)%>%
+    mutate(Event = str_replace_all(Event,"details",""))
+wiki_year_g$Rank <- "1"
+
+#Kaggle athletic data and wikipedia data joined for year Gold.
+kaggle_athletics_year_g <- kaggle_athletics_year%>%
+  filter(Year == func_year, Medal == "Gold", Event == "Marathon" | Event == "100 metres" | Event == "800 metres")
+final_year_g <- left_join(kaggle_athletics_year_g,wiki_year_g,by = "Event")
+
+#Repeat year for Silver
+wiki_year_s<- wiki_year %>%
+  select (1, 4:5)%>%
+    mutate(Event = str_replace_all(Event,"details",""))
+wiki_year_s$Rank <- "2"
+
+#Kaggle athletic data and wikipedia data joined for year and silver medalists.
+kaggle_athletics_year_s <- kaggle_athletics%>%
+  filter(Year == func_year, Medal == "Silver", Event == "Marathon" | Event == "100 metres" | Event == "800 metres")
+final_year_s <- left_join(kaggle_athletics_year_s,wiki_year_s,by = "Event")
+
+#Do the same for Bronze
+wiki_year_b<- wiki_year %>%
+  select (1, 6:7)%>%
+    mutate(Event = str_replace_all(Event,"details",""))
+wiki_year_b$Rank <- "3"
+
+#Kaggle athletic data and wikipedia data joined for year and bronze medalists.
+kaggle_athletics_year_b <- kaggle_athletics%>%
+  filter(Year == func_year, Medal == "Bronze", Event == "Marathon" | Event == "100 metres" | Event == "800 metres")
+final_year_b <- left_join(kaggle_athletics_year_b,wiki_year_b,by = "Event")
+
+#Consolidate gold, silver and bronze for year 
+final_year <- final_year_g %>%
+   rbind.data.frame(final_year_s) %>%
+   rbind.data.frame(final_year_b)
+#   select(1:7, 10:13, 15, 16, 19)
+final_year
+}
+
+```
+
+Begin calling the function olympic_join for each of the Olympics by year, starting in 2016.  
+```{r}
+result_m <- olympic_join("2016","https://en.wikipedia.org/wiki/Athletics_at_the_2016_Summer_Olympics", 6, "M")
+result_w <- olympic_join("2016","https://en.wikipedia.org/wiki/Athletics_at_the_2016_Summer_Olympics", 7, "F")
+```
+
+The rows of each subsequent years are appended to 2016, separated by sex.
+
+```{r}
+result_new <- olympic_join("2012", "https://en.wikipedia.org/wiki/Athletics_at_the_2012_Summer_Olympics",7, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("2012", "https://en.wikipedia.org/wiki/Athletics_at_the_2012_Summer_Olympics",8, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+
+```{r}
+result_new <- olympic_join("2008", "https://en.wikipedia.org/wiki/Athletics_at_the_2008_Summer_Olympics",4, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("2008", "https://en.wikipedia.org/wiki/Athletics_at_the_2012_Summer_Olympics",5, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+
+```{r}
+result_new <- olympic_join("2004", "https://en.wikipedia.org/wiki/Athletics_at_the_2004_Summer_Olympics",3, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("2004", "https://en.wikipedia.org/wiki/Athletics_at_the_2004_Summer_Olympics",4, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+
+```{r}
+result_new <- olympic_join("2000", "https://en.wikipedia.org/wiki/Athletics_at_the_2000_Summer_Olympics",3, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("2000", "https://en.wikipedia.org/wiki/Athletics_at_the_2000_Summer_Olympics",4, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+
+```{r}
+result_new <- olympic_join("1996", "https://en.wikipedia.org/wiki/Athletics_at_the_1996_Summer_Olympics",2, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("1996", "https://en.wikipedia.org/wiki/Athletics_at_the_1996_Summer_Olympics",3, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+```{r}
+result_new <- olympic_join("1992", "https://en.wikipedia.org/wiki/Athletics_at_the_1992_Summer_Olympics",2, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("1992", "https://en.wikipedia.org/wiki/Athletics_at_the_1992_Summer_Olympics",3, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+head(result_w)
+```
+
+```{r}
+result_new <- olympic_join("1988", "https://en.wikipedia.org/wiki/Athletics_at_the_1988_Summer_Olympics",2, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("1988", "https://en.wikipedia.org/wiki/Athletics_at_the_1988_Summer_Olympics",3, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+
+```{r}
+result_new <- olympic_join("1984", "https://en.wikipedia.org/wiki/Athletics_at_the_1984_Summer_Olympics",3, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("1984", "https://en.wikipedia.org/wiki/Athletics_at_the_1984_Summer_Olympics",4, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+
+```{r}
+result_new <- olympic_join("1980", "https://en.wikipedia.org/wiki/Athletics_at_the_1980_Summer_Olympics",4, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("1980", "https://en.wikipedia.org/wiki/Athletics_at_the_1980_Summer_Olympics",5, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+
+```{r}
+result_new <- olympic_join("1976", "https://en.wikipedia.org/wiki/Athletics_at_the_1976_Summer_Olympics",1, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("1976", "https://en.wikipedia.org/wiki/Athletics_at_the_1976_Summer_Olympics",2, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+
+```{r}
+result_new <- olympic_join("1972", "https://en.wikipedia.org/wiki/Athletics_at_the_1972_Summer_Olympics",1, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("1972", "https://en.wikipedia.org/wiki/Athletics_at_the_1972_Summer_Olympics",2, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+
+```{r}
+result_new <- olympic_join("1968", "https://en.wikipedia.org/wiki/Athletics_at_the_1968_Summer_Olympics",2, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("1968", "https://en.wikipedia.org/wiki/Athletics_at_the_1968_Summer_Olympics",3, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+
+```{r}
+result_new <- olympic_join("1964", "https://en.wikipedia.org/wiki/Athletics_at_the_1964_Summer_Olympics",1, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("1964", "https://en.wikipedia.org/wiki/Athletics_at_the_1964_Summer_Olympics",2, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+
+```{r}
+result_new <- olympic_join("1960", "https://en.wikipedia.org/wiki/Athletics_at_the_1960_Summer_Olympics",3, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("1960", "https://en.wikipedia.org/wiki/Athletics_at_the_1960_Summer_Olympics",4, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+
+```{r}
+result_new <- olympic_join("1956", "https://en.wikipedia.org/wiki/Athletics_at_the_1956_Summer_Olympics",2, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("1956", "https://en.wikipedia.org/wiki/Athletics_at_the_1956_Summer_Olympics",3, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+
+```{r}
+result_new <- olympic_join("1952", "https://en.wikipedia.org/wiki/Athletics_at_the_1952_Summer_Olympics",2, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("1952", "https://en.wikipedia.org/wiki/Athletics_at_the_1952_Summer_Olympics",3, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+
+```{r}
+result_new <- olympic_join("1948", "https://en.wikipedia.org/wiki/Athletics_at_the_1948_Summer_Olympics",3, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("1948", "https://en.wikipedia.org/wiki/Athletics_at_the_1948_Summer_Olympics",4, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+
+```{r}
+result_new <- olympic_join("1936", "https://en.wikipedia.org/wiki/Athletics_at_the_1936_Summer_Olympics",3, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+head(result_m)
+
+result_new <- olympic_join("1936", "https://en.wikipedia.org/wiki/Athletics_at_the_1936_Summer_Olympics",4, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+head(result_w)
+```
+
+Select columns from women's and men's data frames, eliminating duplicates that were created in the join.
+
+```{r}
+athletics_m_final <- result_m%>%
+select(2:7,10,12:14,17,18)
+head(athletics_m_final)
+
+athletics_w_final <- result_w%>%
+select(2:7,10,12:14,17,18)
+head(athletics_w_final)
+```
+Remove non-numeric notes from the time fields. Convert hms to decimal seconds where needed for both men and women.  Compute BMI = height/weight**2. 
+As professor suggestion, we substituted BMI for weight when exploring correlation. This is the representation Correlation: Performance vs. : BMI.
+```{r}
+athletics_m_final <-athletics_m_final %>% na.omit() %>%
+    mutate(Time = str_extract(Time,"[0-9':''.']+"))
+
+athletics_m_hms <- athletics_m_final %>%
+  filter(str_detect(athletics_m_final$Time,":")) 
+  athletics_m_hms$Time <- period_to_seconds(hms(athletics_m_hms$Time))
+
+athletics_m_final <- athletics_m_final %>%
+  filter(str_detect(athletics_m_final$Time,":") == "FALSE") %>% 
+rbind(athletics_m_hms)%>%
+arrange(Event)
+head(athletics_m_final)
+
+athletics_w_final <-athletics_w_final %>% na.omit() %>%
+    mutate(Time = str_extract(Time,"[0-9':''.']+"))
+
+athletics_w_hms <- athletics_w_final %>%
+  filter(str_detect(athletics_w_final$Time,":")) 
+  athletics_w_hms$Time <- period_to_seconds(hms(athletics_w_hms$Time))
+
+athletics_w_final <- athletics_w_final %>%
+  filter(str_detect(athletics_w_final$Time,":") == "FALSE") %>% 
+rbind(athletics_w_hms )%>%
+ arrange(Event)
+ head(athletics_w_final)
+```
+
+```{r}
+athletics_m_final$BMI <- as.numeric(athletics_m_final$Weight)/((as.numeric(athletics_m_final$Height)/100)**2)
+athletics_w_final$BMI <-        
+ as.numeric(athletics_w_final$Weight)/((as.numeric(athletics_w_final$Height)/100)**2)
+```
+
+Perform a multi-variate correlation of BMI with Time for both men and women for each of the three designated Athletics Events(Marathon, 100 hundred metres, and 800 metres) Only 100 meter produced a significant correlation, with the p-value of the estimate (approximately 0.018 for the men).  The r_square = 0.2871 was not high enough to conclude that the variation in the speed was solely due to the athlete's BMI.  Clearly, a multi-variate model, including other explanatory variables should be explored.   
+
+```{r}
+marathon_m <- athletics_m_final %>%
+  filter(Event == "Marathon") 
+marathon_lm_m = lm(as.numeric(marathon_m$Time)~marathon_m$BMI)
+  summary(marathon_lm_m)
+```
+
+```{r}
+marathon_w <- athletics_w_final %>%
+  filter(Event == "Marathon") 
+marathon_lm_w = lm(as.numeric(marathon_w$Time)~marathon_w$BMI)
+  summary(marathon_lm_w)
+```
+
+```{r}
+hundred_m <- athletics_m_final %>%
+  filter(Event == "100 metres") 
+hundred_lm_m = lm(as.numeric(hundred_m$Time)~hundred_m$BMI)
+  summary(hundred_lm_m)
+```
+
+
+```{r}
+hundred_w <- athletics_w_final %>%
+  filter(Event == "100 metres") 
+hundred_lm_w = lm(as.numeric(hundred_w$Time)~hundred_w$BMI)
+  summary(hundred_lm_w)
+
+```
+
+```{r}
+eight_hundred_m <- athletics_m_final %>%
+  filter(Event == "800 metres") 
+eight_hundred_lm_m = lm(as.numeric(eight_hundred_m$Time)~eight_hundred_m$BMI)
+  summary(eight_hundred_lm_m)
+```
+
+```{r}
+eight_hundred_w <- athletics_w_final %>%
+  filter(Event == "800 metres") 
+eight_hundred_lm_w = lm(as.numeric(eight_hundred_w$Time)~eight_hundred_w$BMI)
+  summary(eight_hundred_lm_w)
+```
+
+Interestingly, the second order component of weight in the formula for BMI results in an improvement in performance (seconds decline) as BMI increases, up until approximately BMI = 25.  Above that value, performance decreases.  Perhaps, a certain amount of muscle mass is optimum to achieve the maximum amount of human speed, but above that BMI, it takes too much force to accelerate the mass.
+```{r }
+ hundred_m_plot<- ggplot(data = hundred_m, aes(BMI, as.numeric(Time))) +xlab("BMI") + ylab("Sec") +
+  geom_point() +
+  ggtitle("Men's 100 Yard Dash Performance vs. BMI") +
+  geom_smooth()
+hundred_m_plot
+```
+
+The comparison of women's BMI to 100 yard dash performance does not replicate this trend, as was anticipated by the high p-value for the estimate and low r_square.
+
+```{r usecase10,  echo=TRUE, message=FALSE, warning=FALSE}
+##Correlation: Performance
+ hundred_w_plot<- ggplot(data = hundred_w, aes(BMI, as.numeric(Time))) +xlab("BMI") + ylab("Sec") +
+  geom_point() +
+  ggtitle("Women's 100 Yard Dash Performance vs. BMI") +
+  geom_smooth()
+hundred_w_plot
+```
+Select columns from Athletics tables for plotting women vs. men's performance over time.
+```{r}
+Olympic_m<- athletics_m_final 
+Olympic_m$Sex = "M"
+
+Olympic_w<- athletics_w_final
+Olympic_w$Sex = "F"
+ 
+Olympics_Athletics <- Olympic_m %>%
+  rbind(Olympic_w) %>%
+  select (9,10,7,2,11,12) 
+  #filter(Rank == "1" )
+head(Olympics_Athletics)
+```
+Plot women's (green) performance against men's performance (red) over time.  Because of the extreme differences in time scale, a facet wrap did not generate meaningful results.  
+
+Women were not allowed to run the Marathon until 1984.  An investigation of the sharp increase in time for the women's Marathon in 1992 was due to a course that finished up a steep incline, sapping their strength at the end of the event.
+```{r usecase7,  echo=TRUE, message=FALSE, warning=FALSE}
+## Male vs. Female: Track & Field
+marathon <- Olympics_Athletics %>%
+  filter(Event == "Marathon") 
+  marathon$Hours = as.numeric(marathon$Time)/3600
+head(marathon)
+Olympic_perf_plot <- ggplot(data = marathon, aes(Year, Hours, colour=Sex)) +
+  coord_cartesian(ylim=c(2,3)) +
+  geom_point() +
+  ggtitle("Marathon") +
+  geom_smooth()
+Olympic_perf_plot
+```
+
+```{r usecase9,  echo=TRUE, message=FALSE, warning=FALSE}
+## Male vs. Female: Speed Skating
+
+url <- "https://en.wikipedia.org/wiki/Speed_skating_at_the_Winter_Olympics"
+
+scraplinks <- function(url){
+  # Create an html document from the url
+  webpage <- xml2::read_html(url)
+  # Extract the URLs
+  url_ <- webpage %>%
+    rvest::html_nodes("a") %>%
+    rvest::html_attr("href")
+  # Extract the link text
+  link_ <- webpage %>%
+    rvest::html_nodes("a") %>%
+    rvest::html_text()
+  return(tibble(link = link_, url = url_))
+}
+
+url_links <- scraplinks(url)
+Men_master <- url_links %>% filter(str_detect(url,"_Men")) %>% select(1,2)
+Men_master <- Men_master %>% mutate(Year = substr(url,28,31)) %>% select(3,2)
+Men_master <- Men_master %>% mutate(url = paste("https://en.wikipedia.org",url,sep=""))
+Men_master <- Men_master %>% mutate(event = word(url,-2,sep='_')) %>% 
+  mutate(event = gsub(",","",event)) %>% select(1,3,2)
+Men_master <- Men_master %>% filter (!is.na(as.numeric(event)))
+
+#500***********************************************************************************************
+Men_master_500 <- Men_master %>% filter(event=="500")
+n = count(Men_master_500)$n
+rm(rprev)
+rm(rank1)
+for (i in 1:n) {
+  year <- Men_master_500$Year[i]
+  event <- str_c(Men_master_500$event[i],"_meters")
+  extractf <- Men_master_500$url[i] %>% read_html() %>% html_table(fill = TRUE)
+  k <- case_when(
+    (year == "1968" | year == "1984" | year == "1992" ) ~ 5,
+    (year == "2014") ~ 8,
+    (year == "2018") ~ 7,
+    (year == "1932") ~ 9,
+    TRUE ~ 6
+  )
+  sitef <- extractf[[k]]
+  if (year == "2006") {
+    sitef <- sitef %>% head(3) %>% select(`Total Time`)
+    sitef <- rename(sitef, Time = `Total Time`)
+  } 
+  if (year == "1998" | year == "2002"| year == "2010" | year == "2014") {
+    sitef <- sitef %>% head(3) %>% select(Total)
+    sitef <- rename(sitef, Time = Total)
+  }
+  rank1 <- sitef %>% head(3) %>% select(Time)
+  if (year == "1932"){
+    rank1 <- sitef %>% head(1) %>% select(Time)
+  }
+  rank1 <- rank1 %>% mutate(Sport = "Skating", Event = event, Year = year, Gender = "Male" )
+  rank1 <- rank1 %>% select (2,3,4,5,1) %>% mutate(Time = str_extract(Time,"[0-9':''.']+"))
+  rank1 <- rank1 %>% mutate(Rank = seq.int(nrow(rank1)))
+  if(str_detect(rank1$Time,":") == "FALSE"){
+    rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  }
+  rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  rank1$Time <- str_replace((rank1$Time),":",".")
+  rank1 <- rank1 %>% mutate(Timeinsec = period_to_seconds(hms(Time)))
+  if (i > 1) {
+    rank1 <- rbind(rprev,rank1)
+  }
+  rprev <- rank1
+}
+
+r_500 <- rank1 %>% na.omit
+
+#1000**********************************************************************************************
+Men_master_1000 <- Men_master %>% filter(event=="1000")
+n = count(Men_master_1000)$n
+rm(rprev)
+rm(rank1)
+for (i in 1:n) {
+  year <- Men_master_1000$Year[i]
+  event <- str_c(Men_master_1000$event[i],"_meters")
+  extractf <- Men_master_1000$url[i] %>% read_html() %>% html_table(fill = TRUE)
+  k <- case_when(
+    (year == "1984" | year == "1992" | year == "2006" | year == "2010") ~ 5,
+    TRUE ~ 6
+  )
+  sitef <- extractf[[k]]
+  rank1 <- sitef %>% head(3) %>% select(Time)
+  rank1 <- rank1 %>% mutate(Sport = "Skating", Event = event, Year = year, Gender = "Male" )
+  rank1 <- rank1 %>% select (2,3,4,5,1) %>% mutate(Time = str_extract(Time,"[0-9':''.']+"))
+  rank1 <- rank1 %>% mutate(Rank = seq.int(nrow(rank1)))
+  if(str_detect(rank1$Time,":") == "FALSE"){
+    rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  }
+  rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  rank1$Time <- str_replace((rank1$Time),":",".")
+  rank1 <- rank1 %>% mutate(Timeinsec = period_to_seconds(hms(Time)))
+  if (i > 1) {
+    rank1 <- rbind(rprev,rank1)
+  }
+  rprev <- rank1
+}
+r_1000 <- rank1 %>% na.omit
+
+#1500**********************************************************************************************
+Men_master_1500 <- Men_master %>% filter(event=="1500")
+n = count(Men_master_1500)$n
+rm(rprev)
+rm(rank1)
+for (i in 1:n) {
+  year <- Men_master_1500$Year[i]
+  event <- str_c(Men_master_1500$event[i],"_meters")
+  extractf <- Men_master_1500$url[i] %>% read_html() %>% html_table(fill = TRUE)
+  k <- case_when(
+    (year == "1964" | year == "1984" | year == "1992" | year == "2006" | year == "2010") ~ 5,
+    (year == "1932") ~ 9,
+    TRUE ~ 6
+  )
+  sitef <- extractf[[k]]
+  rank1 <- sitef %>% head(3) %>% select(Time)
+  if (year == "1932"){
+    rank1 <- sitef %>% head(1) %>% select(Time)
+  }
+  rank1 <- rank1 %>% mutate(Sport = "Skating", Event = event, Year = year, Gender = "Male" )
+  rank1 <- rank1 %>% select (2,3,4,5,1) %>% mutate(Time = str_extract(Time,"[0-9':''.']+"))
+  rank1 <- rank1 %>% mutate(Rank = seq.int(nrow(rank1)))
+  if(str_detect(rank1$Time,":") == "FALSE"){
+    rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  }
+  rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  rank1$Time <- str_replace((rank1$Time),":",".")
+  rank1 <- rank1 %>% mutate(Timeinsec = period_to_seconds(hms(Time)))
+  if (i > 1) {
+    rank1 <- rbind(rprev,rank1)
+  }
+  rprev <- rank1
+}
+
+r_1500 <- rank1 %>% na.omit
+
+#5000**********************************************************************************************
+Men_master_5000 <- Men_master %>% filter(event=="5000")
+n = count(Men_master_5000)$n
+rm(rprev)
+rm(rank1)
+for (i in 1:n) {
+  year <- Men_master_5000$Year[i]
+  event <- str_c(Men_master_5000$event[i],"_meters")
+  extractf <- Men_master_5000$url[i] %>% read_html() %>% html_table(fill = TRUE)
+  k <- case_when(
+    (year == "1972" | year == "1976" | year == "1984" | year == "1992" | year == "2006") ~ 5,
+    (year == "2014") ~ 7,
+    TRUE ~ 6
+  )
+  sitef <- extractf[[k]]
+  rank1 <- sitef %>% head(3) %>% select(Time)
+  rank1 <- rank1 %>% mutate(Sport = "Skating", Event = event, Year = year, Gender = "Male" )
+  rank1 <- rank1 %>% select (2,3,4,5,1) %>% mutate(Time = str_extract(Time,"[0-9':''.']+"))
+  rank1 <- rank1 %>% mutate(Rank = seq.int(nrow(rank1)))
+  if(str_detect(rank1$Time,":") == "FALSE"){
+    rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  }
+  rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  rank1$Time <- str_replace((rank1$Time),":",".")
+  rank1 <- rank1 %>% mutate(Timeinsec = period_to_seconds(hms(Time)))
+  if (i > 1) {
+    rank1 <- rbind(rprev,rank1)
+  }
+  rprev <- rank1
+}
+r_5000 <- rank1 %>% na.omit
+
+#**************************************************************************************************
+rm(Men_extract)
+Men_extract <- bind_rows(r_500,r_1000,r_1500,r_5000)
+head(Men_extract)
+#**************************************************************************************************
+Women_master <- url_links %>% filter(str_detect(url,"_Women")) %>% select(1,2)
+Women_master <- Women_master %>% mutate(Year = substr(url,28,31)) %>% select(3,2)
+Women_master <- Women_master %>% mutate(url = paste("https://en.wikipedia.org",url,sep=""))
+Women_master <- Women_master %>% mutate(event = word(url,-2,sep='_')) %>% 
+  mutate(Event = gsub(",","",event)) %>% select(1,3,2)
+Women_master <- Women_master %>% filter (!is.na(as.numeric(event)))
+
+#Women 500*****************************************************************************************
+Women_master_500 <- Women_master %>% filter(event=="500")
+n = count(Women_master_500)$n
+rm(rprev)
+rm(rank1)
+for (i in 1:n) {
+  year <- Women_master_500$Year[i]
+  event <- str_c(Women_master_500$event[i],"_meters")
+  extractf <- Women_master_500$url[i] %>% read_html() %>% html_table(fill = TRUE)
+  k <- case_when(
+    (year == "1968"| year == "1992" | year == "1994") ~ 5,
+    TRUE ~ 6
+  )
+  sitef <- extractf[[k]]
+  if (year == "1998" | year == "2002" | year == "2010") {
+    #glimpse(sitef)
+    sitef <- sitef %>% head(3) %>% select(Total)
+    sitef <- rename(sitef, Time = Total)
+  }
+  if (year == "2006") {
+    #glimpse(sitef)
+    sitef <- sitef %>% head(3) %>% select(`Total Time`)
+    sitef <- rename(sitef, Time = `Total Time`)
+  }
+  rank1 <- sitef %>% head(3) %>% select(Time)
+  rank1 <- rank1 %>% mutate(Sport = "Skating", Event = event, Year = year, Gender = "Female" )
+  rank1 <- rank1 %>% select (2,3,4,5,1) %>% mutate(Time = str_extract(Time,"[0-9':''.']+"))
+  rank1 <- rank1 %>% mutate(Rank = seq.int(nrow(rank1)))
+  if(str_detect(rank1$Time,":") == "FALSE"){
+    rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  }
+  rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  rank1$Time <- str_replace((rank1$Time),":",".")
+  rank1 <- rank1 %>% mutate(Timeinsec = period_to_seconds(hms(Time)))
+  if (i > 1) {
+    rank1 <- rbind(rprev,rank1)
+  }
+  rprev <- rank1
+}
+r_w_500 <- rank1 %>% na.omit
+
+#Women 1000 ***************************************************************************************
+Women_master_1000 <- Women_master %>% filter(event=="1000")
+n = count(Women_master_1000)$n
+rm(rprev)
+rm(rank1)
+for (i in 1:n) {
+  year <- Women_master_1000$Year[i]
+  event <- str_c(Women_master_1000$event[i],"_meters")
+  extractf <- Women_master_1000$url[i] %>% read_html() %>% html_table(fill = TRUE)
+  k <- case_when(
+    (year == "1992" | year == "1994" | year == "2006" | year == "2010") ~ 5,
+    TRUE ~ 6
+  )
+  sitef <- extractf[[k]]
+  rank1 <- sitef %>% head(3) %>% select(Time)
+  rank1 <- rank1 %>% mutate(Sport = "Skating", Event = event, Year = year, Gender = "Female" )
+  rank1 <- rank1 %>% select (2,3,4,5,1) %>% mutate(Time = str_extract(Time,"[0-9':''.']+"))
+  rank1 <- rank1 %>% mutate(Rank = seq.int(nrow(rank1)))
+  if(str_detect(rank1$Time,":") == "FALSE"){
+    rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  }
+  rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  rank1$Time <- str_replace((rank1$Time),":",".")
+  rank1 <- rank1 %>% mutate(Timeinsec = period_to_seconds(hms(Time)))
+  if (i > 1) {
+    rank1 <- rbind(rprev,rank1)
+  }
+  rprev <- rank1
+}
+r_w_1000 <- rank1 %>% na.omit
+
+#Women 1500 ***************************************************************************************
+Women_master_1500 <- Women_master %>% filter(event=="1500")
+n = count(Women_master_1500)$n
+rm(rprev)
+rm(rank1)
+for (i in 1:n) {
+  year <- Women_master_1500$Year[i]
+  event <- str_c(Women_master_1500$event[i],"_meters")
+  extractf <- Women_master_1500$url[i] %>% read_html() %>% html_table(fill = TRUE)
+  k <- case_when(
+    (year == "1992" | year == "1994" | year == "2006" | year == "2010" | year == "2018") ~ 5,
+    TRUE ~ 6
+  )
+  sitef <- extractf[[k]]
+  rank1 <- sitef %>% head(3) %>% select(Time)
+  rank1 <- rank1 %>% mutate(Sport = "Skating", Event = event, Year = year, Gender = "Female")
+  rank1 <- rank1 %>% select (2,3,4,5,1) %>% mutate(Time = str_extract(Time,"[0-9':''.']+"))
+  rank1 <- rank1 %>% mutate(Rank = seq.int(nrow(rank1)))
+  if(str_detect(rank1$Time,":") == "FALSE"){
+    rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  }
+  rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  rank1$Time <- str_replace((rank1$Time),":",".")
+  rank1 <- rank1 %>% mutate(Timeinsec = period_to_seconds(hms(Time)))
+  if (i > 1) {
+    rank1 <- rbind(rprev,rank1)
+  }
+  rprev <- rank1
+}
+r_w_1500 <- rank1 %>% na.omit
+
+#Women 5000 ***************************************************************************************
+Women_master_5000 <- Women_master %>% filter(event=="5000")
+n = count(Women_master_5000)$n
+rm(rprev)
+rm(rank1)
+for (i in 1:n) {
+  year <- Women_master_5000$Year[i]
+  event <- str_c(Women_master_5000$event[i],"_meters")
+  extractf <- Women_master_5000$url[i] %>% read_html() %>% html_table(fill = TRUE)
+  k <- case_when(
+    (year == "1992" | year == "1994" | year == "2006" | year == "2010") ~ 5,
+    TRUE ~ 6
+  )
+  sitef <- extractf[[k]]
+  rank1 <- sitef %>% head(3) %>% select(Time)
+  rank1 <- rank1 %>% mutate(Sport = "Skating", Event = event, Year = year, Gender = "Female" )
+  rank1 <- rank1 %>% select (2,3,4,5,1) %>% mutate(Time = str_extract(Time,"[0-9':''.']+"))
+  rank1 <- rank1 %>% mutate(Rank = seq.int(nrow(rank1)))
+  if(str_detect(rank1$Time,":") == "FALSE"){
+    rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  }
+  rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  rank1$Time <- str_replace((rank1$Time),":",".")
+  rank1 <- rank1 %>% mutate(Timeinsec = period_to_seconds(hms(Time)))
+  if (i > 1) {
+    rank1 <- rbind(rprev,rank1)
+  }
+  rprev <- rank1
+}
+r_w_5000 <- rank1 %>% na.omit
+
+rm(Women_extract)
+Women_extract <- bind_rows(r_w_500,r_w_1000,r_w_1500,r_w_5000)
+head(Women_extract)
+
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+Combine men and women's files for plotting.
+
+```{r}
+Olympics_speed_skating <- Men_extract %>%
+  rbind(Women_extract)
+head(Olympics_speed_skating )
+
+```
+
+plot 500 metres Speed Skating
+
+```{r}
+m500 <- Olympics_speed_skating %>%
+  filter(Event == "500_meters") 
+  m500$Sec = m500$Timeinsec
+Olympic_perf_plot <- ggplot(data = m500, aes(Year, Sec, colour=Gender)) +
+  coord_cartesian(ylim = c(30,80)) +
+  geom_point() +
+  ggtitle("500 metres: Olympic Women Speed Skating Performance vs. Men") +
+  geom_smooth()
+Olympic_perf_plot
+```
+
+plot 1000 meter
+```{r}
+m1000 <- Olympics_speed_skating %>%
+  filter(Event == "1000_meters") 
+  m1000$Sec = m1000$Timeinsec
+Olympic_perf_plot <- ggplot(data = m1000, aes(Year, Sec, colour=Gender)) +
+  coord_cartesian(ylim = c(60,130)) +
+  geom_point() +
+  ggtitle("1000 metres") +
+  geom_smooth()
+Olympic_perf_plot
+```
+plot 1500
+
+```{r}
+m1500 <- Olympics_speed_skating %>%
+  filter(Event == "1500_meters") 
+  m1500$Sec = m1500$Timeinsec
+Olympic_perf_plot <- ggplot(data = m1500, aes(Year, Sec, colour=Gender)) +
+  coord_cartesian(ylim = c(100,200)) +
+  geom_point() +
+  ggtitle("1500 metres: Olympic Women Speed Skating Performance vs. Men") +
+  geom_smooth()
+  
+Olympic_perf_plot
+```
+
+plot 5000 meters
+
+```{r}
+m5000 <- Olympics_speed_skating %>%
+  filter(Event == "5000_meters") 
+  m5000$Sec = m5000$Timeinsec
+Olympic_perf_plot <- ggplot(data = m5000, aes(Year, Sec, colour=Gender)) +
+  coord_cartesian(ylim = c(300,600)) +
+  geom_point() +
+  ggtitle("5000 metres") +
+  geom_smooth()
+  
+Olympic_perf_plot
+```
+
+```{r usecase8,  echo=TRUE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+url <- "https://en.wikipedia.org/wiki/Swimming_at_the_Summer_Olympics"
+
+scraplinks <- function(url){
+# Create an html document from the url
+webpage <- xml2::read_html(url)
+# Extract the URLs
+url_ <- webpage %>%
+rvest::html_nodes("a") %>%
+rvest::html_attr("href")
+# Extract the link text
+link_ <- webpage %>%
+rvest::html_nodes("a") %>%
+rvest::html_text()
+return(tibble(link = link_, url = url_))
+}
+
+url_links <- scraplinks(url)
+Men_master <- url_links %>% filter(str_detect(url,"_Men"))  %>% filter(str_detect(link,"X")) %>%
+            filter(str_detect(url,"_sailors",TRUE)) %>%
+            filter(str_detect(url,"_yard",TRUE)) %>% 
+            filter(str_detect(url,"_mile",TRUE)) %>% 
+            filter(str_detect(url,"_medley",TRUE)) %>% 
+            filter(str_detect(url,"_relay",TRUE)) %>% 
+            filter(str_detect(url,"_obstacle",TRUE)) %>% 
+            filter(str_detect(url,"_underwater",TRUE)) %>% 
+            filter(str_detect(url,"_marathon",TRUE)) %>%
+            filter(str_detect(url,"_team",TRUE)) %>% select(1,2)
+Men_master <- Men_master %>% mutate(Year = substr(url,23,26)) %>% select(3,2)
+Men_master <- Men_master %>% mutate(url = paste("https://en.wikipedia.org",url,sep=""))
+Men_master <- Men_master %>% mutate(event = word(url,9,end=11,sep='_')) %>% 
+  mutate(event = gsub(",","",event)) %>% select(1,3,2)
+
+
+### ************************** 50_metre_freestyle ### ************************** 
+Men_master_50 <- Men_master %>% filter(event=="50_metre_freestyle")
+n = count(Men_master_50)$n
+rm(rprev)
+rm(rank1)
+for (i in 1:n) {
+  year <- Men_master_50$Year[i]
+  event <- Men_master_50$event[i]
+  extractf <- Men_master_50$url[i] %>% read_html() %>% html_table(fill = TRUE)
+  k <- case_when(
+    (year == "1988" | year == "2020" ) ~ 9,(year == "1992" | year == "1996" | year == "2008" ) ~ 8,
+    (year == "2000" | year == "2004" | year == "2012" | year == "2016") ~ 7, TRUE ~ 6
+  )
+  sitef <- extractf[[k]]
+  rank1 <- sitef %>% head(3) %>% select(Time)
+  rank1 <- rank1 %>% mutate(Sport = "Swimming", Event = event, Year = year, Gender = "Male" )
+  rank1 <- rank1 %>% select (2,3,4,5,1) %>% mutate(Time = str_extract(Time,"[0-9':''.']+"))
+  rank1 <- rank1 %>% mutate(Rank = seq.int(nrow(rank1)))
+  if(str_detect(rank1$Time,":") == "FALSE"){
+    rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  }
+  rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  rank1$Time <- str_replace((rank1$Time),":",".")
+  rank1 <- rank1 %>% mutate(Timeinsec = period_to_seconds(hms(Time)))
+  if (i > 1) {
+    rank1 <- rbind(rprev,rank1)
+  }
+  rprev <- rank1
+}
+rank50mtre_fs <- rank1 %>% na.omit()
+### ************************** 50_metre_freestyle Men ### ************************** 
+
+
+### ************************** 100_metre_freestyle Men ### ************************** 
+
+Men_master_100_fs <- Men_master %>% filter(event=="100_metre_freestyle")
+n = count(Men_master_100_fs)$n
+rm(rprev)
+rm(rank1)
+for (i in 1:n) {
+  year <- Men_master_100_fs$Year[i]
+  event <- Men_master_100_fs$event[i]
+  extractf <- Men_master_100_fs$url[i] %>% read_html() %>% html_table(fill = TRUE)
+  k <- case_when(
+    (year == "1896" ) ~ 5,
+    (year == "1960" | year == "1964" | year == "1968" | year == "1980" | year == "1992" | year == "1996" | year == "2000" | year == "2004" | year == "2008" | year == "2012" | year == "2016") ~ 8, 
+    (year == "1952" | year == "1956" | year == "1972" | year == "1976" | year == "1984" | year == "1988" | year == "2020") ~ 9,
+    (year == "2000" | year == "2004" | year == "2012" | year == "2016") ~ 7,
+    (year == "1908") ~ 17,
+    (year == "1912") ~ 20, 
+    (year == "1932") ~ 12,
+    (year == "1920" | year == "1924" | year == "1948") ~ 14, 
+    (year == "1936") ~ 15, 
+    (year == "1928") ~ 16, 
+    TRUE ~ 6
+  )
+  sitef <- extractf[[k]]
+  if (colnames(sitef)[4] == "Time (1st)"){
+    colnames(sitef)[4] <- "Time"
+  }
+  rank1 <- sitef %>% head(3) %>% select(Time)
+  rank1 <- rank1 %>% mutate(Sport = "Swimming", Event = event, Year = year, Gender = "Male" )
+  rank1 <- rank1 %>% select (2,3,4,5,1) %>% mutate(Time = str_extract(Time,"[0-9':''.']+"))
+  rank1 <- rank1 %>% mutate(Rank = seq.int(nrow(rank1)))
+  if(str_detect(rank1$Time,":") == "FALSE"){
+    rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  }
+  rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  rank1$Time <- str_replace((rank1$Time),":",".")
+  rank1 <- rank1 %>% mutate(Timeinsec = period_to_seconds(hms(Time)))
+  if (i > 1) {
+    rank1 <- rbind(rprev,rank1)
+  }
+  rprev <- rank1
+}
+
+rank100mtre_fs <- rank1 %>% na.omit()
+
+### ************************** 100_metre_freestyle Men ### ************************** 
+
+
+### ************************** 200_metre_freestyle Men ### ************************** 
+
+Men_master_200_fs <- Men_master %>% filter(event=="200_metre_freestyle")
+n = count(Men_master_200_fs)$n
+rm(rprev)
+rm(rank1)
+for (i in 1:n) {
+  year <- Men_master_200_fs$Year[i]
+  event <- Men_master_200_fs$event[i]
+  extractf <- Men_master_200_fs$url[i] %>% read_html() %>% html_table(fill = TRUE)
+  k <- case_when(
+    (year == "1900" ) ~ 10, 
+    (year == "1984" | year == "1988" | year == "1992" | year == "1996" 
+     | year == "2000" | year == "2004" | year == "2008" |  year == "2020") ~ 9,
+    (year == "1968" | year == "1972" | year == "1976" ) ~ 7,
+    (year == "1980" | year == "2012" | year == "2016") ~ 8, 
+    TRUE ~ 6
+  )
+  sitef <- extractf[[k]]
+  rank1 <- sitef %>% head(3) %>% select(Time)
+  rank1 <- rank1 %>% mutate(Sport = "Swimming", Event = event, Year = year, Gender = "Male" )
+  rank1 <- rank1 %>% select (2,3,4,5,1)  %>% mutate(Time = str_extract(Time,"[0-9':''.']+"))
+  rank1 <- rank1 %>% mutate(Rank = seq.int(nrow(rank1)))
+  if(str_detect(rank1$Time,":") == "FALSE"){
+    rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  }
+  rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  rank1$Time <- str_replace((rank1$Time),":",".")
+  rank1 <- rank1 %>% mutate(Timeinsec = period_to_seconds(hms(Time)))
+  if (i > 9) {
+    rank1 <- rbind(rprev,rank1)
+  }
+  rprev <- rank1
+}
+
+rank200mtre_fs <- rank1 %>% na.omit()
+
+### ************************** 200_metre_freestyle Men ### ************************** 
+
+### ************************** 400_metre_freestyle Men ### ************************** 
+
+Men_master_400_fs <- Men_master %>% filter(event=="400_metre_freestyle")
+n = count(Men_master_400_fs)$n
+rm(rprev)
+rm(rank1)
+k=0
+for (i in 1:n) {
+  year <- Men_master_400_fs$Year[i]
+  event <- Men_master_400_fs$event[i]
+  extractf <- Men_master_400_fs$url[i] %>% read_html() %>% html_table(fill = TRUE)
+  k <- case_when(
+    (year == "1900" | year == "1964") ~ 10, (year == "1948") ~5, ( year == "2004" | year == "2008" | year == "2016" ) ~6, (year == "1912" | year == "1928") ~13, (year == "1920" | year == "1924" | year == "1936") ~12, (year == "1968" | year == "1972"   | year == "1980" | year =="1996" | year == "2000"| year == "2020" |year == "2012") ~ 7,(year == "1956" | year == "1960") ~9,
+    ( year == "1984" | year == "1988" | year == "1992") ~ 8, (year == "1956" | year == "1976" | year == "1932"| year == "1952") ~11, (year == "1908") ~16,
+    TRUE ~ 15
+  )
+  sitef <- extractf[[k]]
+  rank1 <- sitef %>% head(3) %>% select(Time)
+  rank1 <- rank1 %>% mutate(Sport = "Swimming", Event = event, Year = year, Gender = "Male" )
+  rank1 <- rank1 %>% select (2,3,4,5,1)   %>% mutate(Time = str_extract(Time,"[0-9':''.']+"))
+  rank1 <- rank1 %>% mutate(Rank = seq.int(nrow(rank1)))
+  if(str_detect(rank1$Time,":") == "FALSE"){
+    rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  }
+  rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  rank1$Time <- str_replace((rank1$Time),":",".")
+  rank1 <- rank1 %>% mutate(Timeinsec = period_to_seconds(hms(Time)))
+  if (i > 1) {
+    rank1 <- rbind(rprev,rank1)
+  }
+  rprev <- rank1
+}
+
+rank400mtre_fs <- rank1 %>% na.omit()
+
+### ************************** 400_metre_freestyle Men ### ************************** 
+
+### ************************** 100_metre_backstroke Men ### ************************** 
+
+Men_master_100_bckstroke <- Men_master %>% filter(event=="100_metre_backstroke")
+n = count(Men_master_100_bckstroke)$n
+rm(rprev)
+rm(rank1)
+for (i in 1:n) {
+  year <- Men_master_100_bckstroke$Year[i]
+  event <- Men_master_100_bckstroke$event[i]
+  extractf <- Men_master_100_bckstroke$url[i] %>% read_html() %>% html_table(fill = TRUE)
+  k <- case_when(
+    (year == "1980" | year=="1984"| year == "1996" | year =="2004" | year == "1920") ~7, (year == "1908") ~14,
+    (year == "1988" | year =="1992"| year == "2020") ~ 8,
+    (year == "1912" | year == "1924" | year == "1928" | year == "1968") ~ 12,
+    (year == "1932" | year == "1952" | year == "1960" | year =="1972" | year == "1976") ~ 10,
+    (year == "1936" | year == "1948" ) ~ 11,
+    (year == "1956" | year == "2000"|year =="2008" | year == "2012"|year == "2016") ~9,
+    TRUE ~ 6
+  )
+
+  sitef <- extractf[[k]]
+  rank1 <- sitef %>% head(3) %>% select(Time)
+  rank1 <- rank1 %>% mutate(Sport = "Swimming", Event = event, Year = year, Gender = "Male" )
+  rank1 <- rank1 %>% select (2,3,4,5,1)    %>% mutate(Time = str_extract(Time,"[0-9':''.']+"))
+  rank1 <- rank1 %>% mutate(Rank = seq.int(nrow(rank1)))
+  if(str_detect(rank1$Time,":") == "FALSE"){
+    rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  }
+  rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  rank1$Time <- str_replace((rank1$Time),":",".")
+  rank1 <- rank1 %>% mutate(Timeinsec = period_to_seconds(hms(Time)))
+  if (i > 9) {
+    rank1 <- rbind(rprev,rank1)
+  }
+  rprev <- rank1
+}
+rank100mtre_backstroke <- rank1 %>% na.omit()
+
+### ************************** 100_metre_backstroke Men Ends ### ************************** 
+
+
+### ************************** 100_metre_breaststroke Men  ### ************************** 
+Men_master_100_breaststroke<- Men_master %>% filter(event=="100_metre_breaststroke")
+n = count(Men_master_100_breaststroke)$n
+rm(rprev)
+rm(rank1)
+for (i in 1:n) {
+  year <- Men_master_100_breaststroke$Year[i]
+  event <- Men_master_100_breaststroke$event[i]
+  extractf <- Men_master_100_breaststroke$url[i] %>% read_html() %>% html_table(fill = TRUE)
+  k <- case_when(
+    (year == "1980") ~ 6,
+    (year == "1984" | year =="1988"| year == "1992" | year =="1996" | year == "2020") ~ 8,
+    (year == "1972") ~ 10,
+    (year == "1968") ~ 11,
+    (year == "1976" | year == "2000"|year =="2004" | year == "2008"|year == "2012" | year == "2016") ~9,
+    TRUE ~ 6
+  )
+  sitef <- extractf[[k]]
+  rank1 <- sitef %>% head(3) %>% select(Time)
+  rank1 <- rank1 %>% mutate(Sport = "Swimming", Event = event, Year = year, Gender = "Male" )
+  rank1 <- rank1 %>% select (2,3,4,5,1) %>% mutate(Time = str_extract(Time,"[0-9':''.']+"))
+  rank1 <- rank1 %>% mutate(Rank = seq.int(nrow(rank1)))
+  if(str_detect(rank1$Time,":") == "FALSE"){
+    rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  }
+  rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  rank1$Time <- str_replace((rank1$Time),":",".")
+  rank1 <- rank1 %>% mutate(Timeinsec = period_to_seconds(hms(Time)))
+  if (i > 1) {
+    rank1 <- rbind(rprev,rank1)
+  }
+  rprev <- rank1
+}
+rank100mtre_breaststroke <- rank1  %>% na.omit
+### ************************** 100metre_breaststroke Men Ends ### ************************** 
+
+### ************************** 100_metre_butterfly Men ### ************************** 
+Men_master_100_metre_butterfly<- Men_master %>% filter(event=="100_metre_butterfly")
+n = count(Men_master_100_metre_butterfly)$n
+rm(rprev)
+rm(rank1)
+for (i in 1:n) {
+  year <- Men_master_100_metre_butterfly$Year[i]
+  event <- Men_master_100_metre_butterfly$event[i]
+  extractf <- Men_master_100_metre_butterfly$url[i] %>% read_html() %>% html_table(fill = TRUE)
+  k <- case_when(
+    (year == "1980" | year == "1992") ~7,(year == "1984" | year =="1988"| year == "1996" | year =="2012" ) ~ 8,
+    (year == "1972" | year =="1976") ~ 10,(year == "1968") ~ 14,
+    (year == "2000" | year == "2004"|year =="2008" | year == "2016"|year == "2020" ) ~9,
+    TRUE ~ 6
+  )
+   sitef <- extractf[[k]]
+  rank1 <- sitef %>% head(3) %>% select(Time)
+  rank1 <- rank1 %>% mutate(Sport = "Swimming", Event = event, Year = year, Gender = "Male" )
+  rank1 <- rank1 %>% select (2,3,4,5,1)  %>% mutate(Time = str_extract(Time,"[0-9':''.']+"))
+  rank1 <- rank1 %>% mutate(Rank = seq.int(nrow(rank1)))
+  if(str_detect(rank1$Time,":") == "FALSE"){
+    rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  }
+  rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  rank1$Time <- str_replace((rank1$Time),":",".")
+  rank1 <- rank1 %>% mutate(Timeinsec = period_to_seconds(hms(Time)))
+  if (i > 9) {
+    rank1 <- rbind(rprev,rank1)
+  }
+  rprev <- rank1
+}
+
+rank100mtre_butterfly <- rank1 %>% na.omit
+### ************************** 100_metre_butterfly Men Ends ### ************************** 
+
+rm(Final_Men_RankingByTime)
+
+Final_Men_RankingByTime <- bind_rows(rank50mtre_fs,
+                                     rank100mtre_fs,
+                                     rank200mtre_fs,
+                                     rank400mtre_fs,
+                                     rank100mtre_backstroke,
+                                     rank100mtre_breaststroke,
+                                     rank100mtre_butterfly)
+head(Final_Men_RankingByTime)
+
+url <- "https://en.wikipedia.org/wiki/Swimming_at_the_Summer_Olympics"
+
+scraplinks <- function(url){
+  # Create an html document from the url
+  webpage <- xml2::read_html(url)
+  # Extract the URLs
+  url_ <- webpage %>%
+    rvest::html_nodes("a") %>%
+    rvest::html_attr("href")
+  link_ <- webpage %>%
+    rvest::html_nodes("a") %>%
+    rvest::html_text()
+  return(tibble(link = link_, url = url_))
+  # Extract the link text
+}
+
+url_links <- scraplinks(url)
+Women_master <- url_links %>% filter(str_detect(url,"_Women"))  %>% filter(str_detect(link,"X")) %>%
+  filter(str_detect(url,"_sailors",TRUE)) %>%
+  filter(str_detect(url,"_yard",TRUE)) %>% 
+  filter(str_detect(url,"_mile",TRUE)) %>% 
+  filter(str_detect(url,"_medley",TRUE)) %>% 
+  filter(str_detect(url,"_relay",TRUE)) %>% 
+  filter(str_detect(url,"_obstacle",TRUE)) %>% 
+  filter(str_detect(url,"_underwater",TRUE)) %>% 
+  filter(str_detect(url,"_marathon",TRUE)) %>%
+  filter(str_detect(url,"_team",TRUE)) %>% select(1,2)
+Women_master <- Women_master %>% mutate(Year = substr(url,23,26)) %>% select(3,2)
+Women_master <- Women_master %>% mutate(url = paste("https://en.wikipedia.org",url,sep=""))
+Women_master <- Women_master %>% mutate(event = word(url,9,end=11,sep='_')) %>% 
+  mutate(event = gsub(",","",event)) %>% select(1,3,2)
+
+
+### ************************** 50_metre_freestyle Women ### ************************** 
+
+Women_master_50<- Women_master %>% filter(event=="50_metre_freestyle")
+n = count(Women_master_50)$n
+rm(rprev)
+rm(rank1)
+for (i in 1:n) {
+  year <- Women_master_50$Year[i]
+  event <- Women_master_50$event[i]
+  extractf <- Women_master_50$url[i] %>% read_html() %>% html_table(fill = TRUE)
+  k <- case_when(
+    (year == "2000") ~ 10, (year == "2008" | year == "2020") ~9, (year == "2012") ~10, 
+    (year == "1988" | year == "1992" | year == "2004" | year == "2016") ~ 8,(year == "1996") ~ 7,
+    TRUE ~ 6
+  )
+  sitef <- extractf[[k]]
+  rank1 <- sitef %>% head(3) %>% select(Time)
+  rank1 <- rank1 %>% mutate(Sport = "Swimming", Event = event, Year = year, Gender = "Female" )
+  rank1 <- rank1 %>% select (2,3,4,5,1) %>% mutate(Time = str_extract(Time,"[0-9':''.']+"))
+  rank1 <- rank1 %>% mutate(Rank = seq.int(nrow(rank1)))
+  if(str_detect(rank1$Time,":") == "FALSE"){
+    rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  }
+  rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  rank1$Time <- str_replace((rank1$Time),":",".")
+  rank1 <- rank1 %>% mutate(Timeinsec = period_to_seconds(hms(Time)))
+  if (i > 1) {
+    rank1 <- rbind(rprev,rank1)
+  }
+  rprev <- rank1
+}
+
+rank50mtre_fs_wn <- rank1 %>% na.omit()
+
+
+### ************************** 50_metre_freestyle Women Ends ### ************************** 
+
+
+### ************************** 100_metre_freestyle Women ### ************************** 
+
+Women_master_100_fs <- Women_master %>% filter(event=="100_metre_freestyle")
+n = count(Women_master_100_fs)$n
+rm(rprev)
+rm(rank1)
+for (i in 1:n) {
+  year <- Women_master_100_fs$Year[i]
+  event <- Women_master_100_fs$event[i]
+    extractf <- Women_master_100_fs$url[i] %>% read_html() %>% html_table(fill = TRUE)
+  k <- case_when(
+    (year == "1948" ) ~ 6,
+    (year == "1920" | year == "1992" | year == "1996") ~ 8, 
+    (year == "1956" | year == "2000" | year == "2004" | year == "2008" | year == "2012" | year == "2016" ) ~ 9,
+    (year == "1960" | year == "1980" | year == "1984" | year == "1988") ~ 7,
+    (year == "2020") ~ 10, (year == "1936") ~ 12, (year == "1968") ~ 14, 
+    (year == "1924" | year =="1932"  | year == "1952" | year == "1964" | year == "1972") ~ 11, 
+    (year == "1976") ~ 13, 
+    TRUE ~ 6
+  )
+  sitef <- extractf[[k]]
+  rank1 <- sitef %>% head(3) %>% select(Time)
+  rank1 <- rank1 %>% mutate(Sport = "Swimming", Event = event, Year = year, Gender = "Female" )
+  rank1 <- rank1 %>% select (2,3,4,5,1)  %>% mutate(Time = str_extract(Time,"[0-9':''.']+"))
+  rank1 <- rank1 %>% mutate(Rank = seq.int(nrow(rank1)))
+  if(str_detect(rank1$Time,":") == "FALSE"){
+    rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  }
+  rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  rank1$Time <- str_replace((rank1$Time),":",".")
+  rank1 <- rank1 %>% mutate(Timeinsec = period_to_seconds(hms(Time)))
+  if (i > 1) {
+    rank1 <- rbind(rprev,rank1)
+  }
+  rprev <- rank1
+}
+
+rank100mtre_fs_wn <- rank1%>% na.omit()
+
+## ****************************** 100_meter_freestyle Woment ends**********************
+
+## ****************************** 200_meter_freestyle Woment **********************
+
+Women_master_200_fs <- Women_master %>% filter(event=="200_metre_freestyle")
+n = count(Women_master_200_fs)$n
+rm(rprev)
+rm(rank1)
+for (i in 1:n) {
+  year <- Women_master_200_fs$Year[i]
+  event <- Women_master_200_fs$event[i]
+  extractf <- Women_master_200_fs$url[i] %>% read_html() %>% html_table(fill = TRUE)
+  k <- case_when(
+    (year == "1968" ) ~ 10,
+    (year == "1976" | year == "2008" | year == "2012") ~ 9,
+    (year == "1980" | year == "1984" | year == "1992" | year == "1996"| year == "2000") ~ 7,
+    (year == "1972" | year == "1988" | year == "2004" | year == "2016" | year =="2020") ~ 8,
+    TRUE ~ 6
+  )
+  sitef <- extractf[[k]]
+  rank1 <- sitef %>% head(3) %>% select(Time)
+  rank1 <- rank1 %>% mutate(Sport = "Swimming", Event = event, Year = year, Gender = "Female" )
+  rank1 <- rank1 %>% select (2,3,4,5,1)   %>% mutate(Time = str_extract(Time,"[0-9':''.']+"))
+  rank1 <- rank1 %>% mutate(Rank = seq.int(nrow(rank1)))
+  if(str_detect(rank1$Time,":") == "FALSE"){
+    rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  }
+  rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  rank1$Time <- str_replace((rank1$Time),":",".")
+  rank1 <- rank1 %>% mutate(Timeinsec = period_to_seconds(hms(Time)))
+  if (i > 1) {
+    rank1 <- rbind(rprev,rank1)
+  }
+  rprev <- rank1
+}
+rank200mtre_fs_wn <- rank1%>% na.omit()
+
+## ****************************** 200_meter_freestyle Women ends **********************
+
+## ****************************** 400_meter_freestyle Women ends **********************
+
+Women_master_400_fs <- Women_master %>% filter(event=="400_metre_freestyle")
+n = count(Women_master_400_fs)$n
+rm(rprev)
+rm(rank1)
+for (i in 1:n) {
+  year <- Women_master_400_fs$Year[i]
+  event <- Women_master_400_fs$event[i]
+  extractf <- Women_master_400_fs$url[i] %>% read_html() %>% html_table(fill = TRUE)
+  k <- case_when(
+    (year == "1932" | year =="1952") ~ 10, (year == "1924" | year =="1928" | year =="1936") ~11, (year == "1948") ~5,
+    (year == "1968" | year == "1976" | year == "" | year == "" | year == "") ~ 9,
+    (year == "1972" | year == "1980" | year == "1992" | year == "1996" 
+     | year == "2008" | year == "2012" | year  == "2016" | year == "2020") ~ 7,
+    (year == "1956" | year == "1964" | year == "1984" | year =="1988") ~ 8, 
+    ( year == "1960" | year =="2000" | year == "2004") ~6,
+    TRUE ~ 6
+  )
+  sitef <- extractf[[k]]
+  rank1 <- sitef %>% head(3) %>% select(Time)
+  rank1 <- rank1 %>% mutate(Sport = "Swimming", Event = event, Year = year, Gender = "Female" )
+  rank1 <- rank1 %>% select (2,3,4,5,1)  %>% mutate(Time = str_extract(Time,"[0-9':''.']+"))
+  rank1 <- rank1 %>% mutate(Rank = seq.int(nrow(rank1)))
+  if(str_detect(rank1$Time,":") == "FALSE"){
+    rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  }
+  rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  rank1$Time <- str_replace((rank1$Time),":",".")
+  rank1 <- rank1 %>% mutate(Timeinsec = period_to_seconds(hms(Time)))
+  if (i > 1) {
+    rank1 <- rbind(rprev,rank1)
+  }
+  rprev <- rank1
+}
+rank400mtre_fs_wn <- rank1%>% na.omit()
+
+## ****************************** 400_meter_freestyle Women ends **********************
+
+## ****************************** 100_metre_backstroke Women  **********************
+Women_master_100_bckstroke <- Women_master %>% filter(event=="100_metre_backstroke")
+n = count(Women_master_100_bckstroke)$n
+rm(rprev)
+rm(rank1)
+for (i in 1:n) {
+  year <- Women_master_100_bckstroke$Year[i]
+  event <- Women_master_100_bckstroke$event[i]
+  extractf <- Women_master_100_bckstroke$url[i] %>% read_html() %>% html_table(fill = TRUE)
+  k <- case_when(
+    (year == "1924" | year == "1932" | year == "1956" | year =="1960" | year == "1964" | year == "1980" | year =="1996") ~7, 
+    (year == "1928" | year =="1984"| year == "1992" | year =="2016") ~ 8,
+    (year == "1968") ~ 14, (year =="1948") ~5, (year == "1952") ~6,
+    (year == "1936" | year == "1976"| year =="1988" | year == "2000"|year == "2004" 
+      | year =="2008" | year == "1972" | year == "2012" | year == "2020") ~9,
+    TRUE ~ 21
+  )
+  sitef <- extractf[[k]]
+  rank1 <- sitef %>% head(3) %>% select(Time)
+  rank1 <- rank1 %>% mutate(Sport = "Swimming", Event = event, Year = year, Gender = "Female" )
+  rank1 <- rank1 %>% select (2,3,4,5,1) %>% mutate(Time = str_extract(Time,"[0-9':''.']+"))
+  rank1 <- rank1 %>% mutate(Rank = seq.int(nrow(rank1)))
+  if(str_detect(rank1$Time,":") == "FALSE"){
+    rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  }
+  rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  rank1$Time <- str_replace((rank1$Time),":",".")
+  rank1 <- rank1 %>% mutate(Timeinsec = period_to_seconds(hms(Time)))
+  if (i > 1) {
+    rank1 <- rbind(rprev,rank1)
+  }
+  rprev <- rank1
+}
+rank100mtrebackstroke_fs_wn <- rank1%>% na.omit()
+
+## ****************************** 100_metre_backstroke Women ends **********************
+
+
+## ****************************** 100_metre_breaststroke Women  **********************
+Women_master_100_breaststroke<- Women_master %>% filter(event=="100_metre_breaststroke")
+n = count(Women_master_100_breaststroke)$n
+rm(rprev)
+rm(rank1)
+for (i in 1:n) {
+  year <- Women_master_100_breaststroke$Year[i]
+  event <- Women_master_100_breaststroke$event[i]
+  extractf <- Women_master_100_breaststroke$url[i] %>% read_html() %>% html_table(fill = TRUE)
+  k <- case_when(
+    (year == "1992" | year == "1980") ~ 7,
+    (year == "1984" | year =="1988"| year == "1996" | year =="2000") ~ 8,
+    (year == "1968" | year == "1976") ~ 10,
+    (year == "1972"|year =="2004" | year == "2008"|year == "2012" | year == "2016"|year == "2020") ~9,
+    TRUE ~ 5
+  )
+  sitef <- extractf[[k]]
+  rank1 <- sitef %>% head(3) %>% select(Time)
+  rank1 <- rank1 %>% mutate(Sport = "Swimming", Event = event, Year = year, Gender = "Female" )
+  rank1 <- rank1 %>% select (2,3,4,5,1)  %>% mutate(Time = str_extract(Time,"[0-9':''.']+"))
+  rank1 <- rank1 %>% mutate(Rank = seq.int(nrow(rank1)))
+  if(str_detect(rank1$Time,":") == "FALSE"){
+    rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  }
+  rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  rank1$Time <- str_replace((rank1$Time),":",".")
+  rank1 <- rank1 %>% mutate(Timeinsec = period_to_seconds(hms(Time)))
+  if(str_detect(rank1$Time,":") == "FALSE"){
+    rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  }
+  rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  rank1$Time <- str_replace((rank1$Time),":",".")
+  rank1 <- rank1 %>% mutate(Timeinsec = period_to_seconds(hms(Time)))
+  if (i > 1) {
+    rank1 <- rbind(rprev,rank1)
+  }
+  rprev <- rank1
+}
+rank100mtrebreaststroke_fs_wn <- rank1%>% na.omit()
+
+## ****************************** 100_metre_breaststroke Women ends **********************
+
+## ****************************** 100_metre_butterfly Women ends **********************
+Women_master_100_metre_butterfly<- Women_master %>% filter(event=="100_metre_butterfly")
+n = count(Women_master_100_metre_butterfly)$n
+rm(rprev)
+rm(rank1)
+for (i in 1:n) {
+  year <- Women_master_100_metre_butterfly$Year[i]
+  event <- Women_master_100_metre_butterfly$event[i]
+  extractf <- Women_master_100_metre_butterfly$url[i] %>% read_html() %>% html_table(fill = TRUE)
+  k <- case_when(
+    (year == "1956" | year == "1980") ~6, (year == "1968") ~ 11, (year == "1960" | year =="1996") ~ 7,
+    (year == "1964") ~ 12, (year == "1976") ~10, (year == "1984" | year == "1988" 
+                                                  | year == "1992" | year == "2004" | year == "2008" | year == "2020") ~8,
+    (year == "1972" | year == "2000"|year =="2012" | year == "2016"|year == " " ) ~9,
+    TRUE ~ 11
+  )
+  sitef <- extractf[[k]]
+  rank1 <- sitef %>% head(3) %>% select(Time)
+  rank1 <- rank1 %>% mutate(Sport = "Swimming", Event = event, Year = year, Gender = "Female" )
+  rank1 <- rank1 %>% select (2,3,4,5,1)  %>% mutate(Time = str_extract(Time,"[0-9':''.']+"))
+  rank1 <- rank1 %>% mutate(Rank = seq.int(nrow(rank1)))
+  if(str_detect(rank1$Time,":") == "FALSE"){
+    rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  }
+  rank1$Time <- paste("0.",trimws(rank1$Time),sep="")
+  rank1$Time <- str_replace((rank1$Time),":",".")
+  rank1 <- rank1 %>% mutate(Timeinsec = period_to_seconds(hms(Time)))
+  if (i > 1) {
+    rank1 <- rbind(rprev,rank1)
+  }
+  rprev <- rank1
+}
+
+rank100mtrebutterfly_fs_wn <- rank1%>% na.omit()
+## ****************************** 100_metre_ butterfly Women ends **********************
+
+rm(Final_Women_RankingByTime)
+Final_Women_RankingByTime <-bind_rows(rank50mtre_fs_wn,
+                                      rank100mtre_fs_wn,
+                                      rank200mtre_fs_wn,
+                                      rank400mtre_fs_wn,
+                                      rank100mtrebackstroke_fs_wn,
+                                      rank100mtrebreaststroke_fs_wn,
+                                      rank100mtrebutterfly_fs_wn)
+
+head(Final_Women_RankingByTime)
+
+```
+
+Combine women's and men's swimming files for plotting
+```{r}
+Olympics_swimming <- Final_Men_RankingByTime %>%
+  rbind(Final_Women_RankingByTime)
+head(Olympics_swimming)
+```
+
+plot 100 metre freestyle
+
+```{r}
+m100fs <- Olympics_swimming %>%
+  filter(Event == "100_metre_freestyle") 
+  m100fs$Sec = m100fs$Timeinsec
+Olympic_perf_plot <- ggplot(data = m100fs, aes(Year, Sec, colour=Gender)) +
+  coord_cartesian(ylim = c(30,70)) +
+  geom_point() +
+  ggtitle("100 metres Freestyle: Olympic Women Swimming Performance vs. Men") +
+  geom_smooth()
+Olympic_perf_plot
+```
+plot 100 metre Butterfly
+
+```{r}
+m100bf <- Olympics_swimming %>%
+  filter(Event == "100_metre_butterfly") 
+  m100bf$Sec = m100bf$Timeinsec
+Olympic_perf_plot <- ggplot(data = m100bf, aes(Year, Sec, colour=Gender)) +
+  coord_cartesian(ylim = c(30,70)) +
+  geom_point() +
+  ggtitle("100 metres Butterfly: Olympic Women Swimming Performance vs. Men") +
+  geom_smooth()
+Olympic_perf_plot
+```
+plot 400 metre Freestyle
+```{r}
+m400fs <- Olympics_swimming %>%
+  filter(Event == "400_metre_freestyle") 
+  m400fs$Sec = m400fs$Timeinsec
+Olympic_perf_plot <- ggplot(data = m400fs, aes(Year, Sec, colour=Gender)) +
+  coord_cartesian(ylim = c(30,500)) +
+  geom_point() +
+  ggtitle("400 metres Freestyle: Olympic Women Swimming Performance vs. Men") +
+  geom_smooth()
+Olympic_perf_plot
+```
+
+plot 100 metre Backstroke
+
+```{r}
+m100bs <- Olympics_swimming %>%
+  filter(Event == "100_metre_backstroke") 
+  m100bs$Sec = m100bs$Timeinsec
+Olympic_perf_plot <- ggplot(data = m100bs, aes(Year, Sec, colour=Gender)) +
+  coord_cartesian(ylim = c(30,100)) +
+  geom_point() +
+  ggtitle("100 metres Backstroke") +
+  geom_smooth()
+Olympic_perf_plot
+```
+
+
+
+
+
+
+
+
+
+
+
+
