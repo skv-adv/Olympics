@@ -1,0 +1,119 @@
+---
+title: "Usecase 5"
+author: "Sahitee Ramya Y V N and Kalai" 
+Collobrated with: Cheryl
+date: "4/17/2022"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r library, echo=FALSE}
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r, echo=TRUE,warning=FALSE}
+#5.	Medals by country for one Summer sport and winter sport
+#*******************************************************************************************
+##Start of Sahitee's Code
+#*********************************************************************************************
+library(tidyverse)
+library(tidytext)
+library(readxl)
+library(rvest)
+library(httr)
+library(curl)
+library(jsonlite)
+library(lubridate)
+
+#Usecase 5
+url <- "https://en.wikipedia.org/wiki/List_of_Olympic_medalists_in_speed_skating"
+extract <- url %>% read_html() %>% html_table(fill = TRUE)
+
+Skating_medal_summary <- extract[[34]] %>% select(Country,Total)
+head(Skating_medal_summary)
+#*********************************************************************************************
+##End of Sahitee's Code
+#*********************************************************************************************
+```
+
+```{r, echo=TRUE,warning=FALSE}
+#*********************************************************************************************
+#Start of Kalai's code
+#*********************************************************************************************
+library(tidyverse)
+library(rvest)
+library(httr) # httr: Tools for Working with URLs and HTTP 
+library(curl)
+library(dplyr)
+library(stringr)
+library(ggplot2)
+library(rvest)
+library(jsonlite)
+library(readxl)
+library(lubridate)
+library(openxlsx)
+library(dplyr)
+library(stringi)
+
+url <- "https://en.wikipedia.org/wiki/Swimming_at_the_Summer_Olympics"
+extractdata <- url %>% read_html() %>% html_table(fill = TRUE)
+Swimming_Medal_Summary_byNations <- extractdata[[11]] %>% select(2,6)
+Swimming_Medal_Summary_byNations
+#*********************************************************************************************
+#End of Kalai's code
+#*********************************************************************************************
+```
+
+```{r, echo=TRUE,warning=FALSE}
+#********************************************************************************************
+#* Combining the data
+#********************************************************************************************
+glimpse(Swimming_Medal_Summary_byNations)
+glimpse(Skating_medal_summary)
+
+Swimming_Medal_Summary <- Swimming_Medal_Summary_byNations
+Swimming_Medal_Summary <- dplyr::rename(Swimming_Medal_Summary,Country = Nation)
+Swimming_Medal_Summary <- Swimming_Medal_Summary %>% arrange(Total) %>% head(-1)
+Swimming_Medal_Summary <- Swimming_Medal_Summary %>%
+  mutate(Country = str_extract(Country, "[a-zA-Z' ']+"))
+Swimming_Medal_Summary <- Swimming_Medal_Summary %>% mutate(Sport = "Swimming")
+head(Swimming_Medal_Summary)
+Skating_medal_summary$Total <- as.integer(Skating_medal_summary$Total)
+Skating_medal_summary <- Skating_medal_summary %>% na.omit()
+Skating_medal_summary <- Skating_medal_summary %>%
+  mutate(Country = str_extract(Country, "[a-zA-Z' ']+"))
+Skating_medal_summary <- Skating_medal_summary %>% mutate(Sport = "Skating")
+tail(Skating_medal_summary)  
+Extract <- bind_rows(Swimming_Medal_Summary,Skating_medal_summary) 
+Extract <- Extract %>% arrange(Country,Sport)
+
+Extract %>% 
+  ggplot(aes( x = reorder(Country,Total,sum), y= Total, fill=Sport,
+              label = Total)) +
+  geom_bar(stat="identity")+ xlab(NULL) +coord_flip() +
+  geom_text(size = 3, position = position_stack(vjust = 0.5)) +
+  xlab("Country") + ylab("Total number of Medals")
+
+#The graph gives visualization of the total medals won by countries across the world in skating and swimming and at the same time the graph
+#Observation from the graph: USA is obviously standing out with the medal count. 
+#A section of nations have been performing well consistently where as another section of nations have been performing not so very well at all
+#Through the same graph we can see the overall performance as well the as the performance 
+# for each sport at the same time
+```
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

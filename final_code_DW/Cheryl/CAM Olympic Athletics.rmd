@@ -1,0 +1,454 @@
+---
+title: "Olympic Athletics"
+author: "Cheryl Allen-Munley" 
+Collaborated with: Kalai and Sahitee
+date: "4/30/2022"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(rlang)
+library(curl) 
+library (dplyr)
+library (ggplot2)
+library(httr) 
+library(jsonlite)
+library(lubridate)
+library(readxl)
+library(rvest)
+library(tidytext)
+library(tidyverse)
+library (topicmodels)
+```
+
+My first task was to extract the Kaggle data and filter for my sport:Athlectics (Track & Field).  The Kaggle table provides important information about the contestants and the event, but with one glaring ommission: Kaggle does not include the performance (time, height, score, etc.) of the actual event.  For this reason, additional data had to be scraped from Wikipedia.
+
+```{r}
+kaggle_athletics <- read_excel("athlete_events.xlsx")%>%
+filter(Sport == "Athletics")
+head(kaggle_athletics)
+```
+
+Wikipedia has separate sites for each Olympic year with separate tables, which varied by year, for male and female performance.  To join the Wikipedia data with Kaggle, I first had to scrape it from the Wikipedia site, rename the columns, clean the event fields in both the Kaggle and Wikipedia files, so that they would match.  
+
+To do this, I created the "olympic_join" function function that accepted year, Wikipedia URL, table number (varied by year) and gender.  The join resulted in two combined files ("M" and "F") for Gold, Silver and Bronze for each Olympic year.
+
+```{r}
+olympic_join = function(func_year, func_url,table_num,gender) {
+#Get the Kaggle files and remove the prefixes "Athletics Men's" and Athletics Women's from the event field.
+  kaggle_athletics_year <- kaggle_athletics%>%
+  filter(Sex == gender, Year == func_year) %>% arrange(Year) %>%
+  mutate(Event = trimws(str_replace_all(Event, "Athletics Men's", ""))) %>%
+  mutate(Event = trimws(str_replace_all(Event, "Athletics Women's", ""))) 
+  
+#Scrape the data from Wikipedia given the functional year.
+  athletics_year <- func_url%>%
+  read_html() %>%
+  html_nodes("table")%>%
+  html_table(fill=TRUE)
+  
+#rename columns to guaranty first column is always "Event" even if column title changes for each Olympic year, and each of the pairs of name and performance for each medal is titled "Name" and "Time."
+wiki_year <- athletics_year[[table_num]]
+colnames(wiki_year)[1] <- "Event"
+colnames(wiki_year)[2] <- "Name"
+colnames(wiki_year)[3] <- "Time"
+colnames(wiki_year)[4] <- "Name"
+colnames(wiki_year)[5] <- "Time"
+colnames(wiki_year)[6] <- "Name"
+colnames(wiki_year)[7] <- "Time"
+
+#Clean field on Wiki, removing "details". Join with Kaggle for gold medalists (rank =1).
+wiki_year_g<- wiki_year %>%
+  select (1:3)%>%
+    mutate(Event = str_replace_all(Event,"details",""))
+wiki_year_g$Rank <- "1"
+
+#Kaggle athletic data and wikipedia data joined for year Gold.
+kaggle_athletics_year_g <- kaggle_athletics_year%>%
+  filter(Year == func_year, Medal == "Gold", Event == "Marathon" | Event == "100 metres" | Event == "800 metres")
+final_year_g <- left_join(kaggle_athletics_year_g,wiki_year_g,by = "Event")
+
+#Repeat year for Silver
+wiki_year_s<- wiki_year %>%
+  select (1, 4:5)%>%
+    mutate(Event = str_replace_all(Event,"details",""))
+wiki_year_s$Rank <- "2"
+
+#Kaggle athletic data and wikipedia data joined for year and silver medalists.
+kaggle_athletics_year_s <- kaggle_athletics%>%
+  filter(Year == func_year, Medal == "Silver", Event == "Marathon" | Event == "100 metres" | Event == "800 metres")
+final_year_s <- left_join(kaggle_athletics_year_s,wiki_year_s,by = "Event")
+
+#Do the same for Bronze
+wiki_year_b<- wiki_year %>%
+  select (1, 6:7)%>%
+    mutate(Event = str_replace_all(Event,"details",""))
+wiki_year_b$Rank <- "3"
+
+#Kaggle athletic data and wikipedia data joined for year and bronze medalists.
+kaggle_athletics_year_b <- kaggle_athletics%>%
+  filter(Year == func_year, Medal == "Bronze", Event == "Marathon" | Event == "100 metres" | Event == "800 metres")
+final_year_b <- left_join(kaggle_athletics_year_b,wiki_year_b,by = "Event")
+
+#Consolidate gold, silver and bronze for year 
+final_year <- final_year_g %>%
+   rbind.data.frame(final_year_s) %>%
+   rbind.data.frame(final_year_b)
+#   select(1:7, 10:13, 15, 16, 19)
+final_year
+}
+
+```
+
+Begin calling the function olympic_join for each of the Olympics by year, starting in 2016.  
+```{r}
+result_m <- olympic_join("2016","https://en.wikipedia.org/wiki/Athletics_at_the_2016_Summer_Olympics", 6, "M")
+result_w <- olympic_join("2016","https://en.wikipedia.org/wiki/Athletics_at_the_2016_Summer_Olympics", 7, "F")
+```
+
+The rows of each subsequent years are appended to 2016, separated by sex.
+
+```{r}
+result_new <- olympic_join("2012", "https://en.wikipedia.org/wiki/Athletics_at_the_2012_Summer_Olympics",7, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("2012", "https://en.wikipedia.org/wiki/Athletics_at_the_2012_Summer_Olympics",8, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+
+```{r}
+result_new <- olympic_join("2008", "https://en.wikipedia.org/wiki/Athletics_at_the_2008_Summer_Olympics",4, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("2008", "https://en.wikipedia.org/wiki/Athletics_at_the_2012_Summer_Olympics",5, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+
+```{r}
+result_new <- olympic_join("2004", "https://en.wikipedia.org/wiki/Athletics_at_the_2004_Summer_Olympics",3, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("2004", "https://en.wikipedia.org/wiki/Athletics_at_the_2004_Summer_Olympics",4, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+
+```{r}
+result_new <- olympic_join("2000", "https://en.wikipedia.org/wiki/Athletics_at_the_2000_Summer_Olympics",3, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("2000", "https://en.wikipedia.org/wiki/Athletics_at_the_2000_Summer_Olympics",4, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+
+```{r}
+result_new <- olympic_join("1996", "https://en.wikipedia.org/wiki/Athletics_at_the_1996_Summer_Olympics",2, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("1996", "https://en.wikipedia.org/wiki/Athletics_at_the_1996_Summer_Olympics",3, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+```{r}
+result_new <- olympic_join("1992", "https://en.wikipedia.org/wiki/Athletics_at_the_1992_Summer_Olympics",2, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("1992", "https://en.wikipedia.org/wiki/Athletics_at_the_1992_Summer_Olympics",3, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+result_w
+```
+
+```{r}
+result_new <- olympic_join("1988", "https://en.wikipedia.org/wiki/Athletics_at_the_1988_Summer_Olympics",2, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("1988", "https://en.wikipedia.org/wiki/Athletics_at_the_1988_Summer_Olympics",3, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+
+```{r}
+result_new <- olympic_join("1984", "https://en.wikipedia.org/wiki/Athletics_at_the_1984_Summer_Olympics",3, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("1984", "https://en.wikipedia.org/wiki/Athletics_at_the_1984_Summer_Olympics",4, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+
+```{r}
+result_new <- olympic_join("1980", "https://en.wikipedia.org/wiki/Athletics_at_the_1980_Summer_Olympics",4, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("1980", "https://en.wikipedia.org/wiki/Athletics_at_the_1980_Summer_Olympics",5, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+
+```{r}
+result_new <- olympic_join("1976", "https://en.wikipedia.org/wiki/Athletics_at_the_1976_Summer_Olympics",1, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("1976", "https://en.wikipedia.org/wiki/Athletics_at_the_1976_Summer_Olympics",2, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+
+```{r}
+result_new <- olympic_join("1972", "https://en.wikipedia.org/wiki/Athletics_at_the_1972_Summer_Olympics",1, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("1972", "https://en.wikipedia.org/wiki/Athletics_at_the_1972_Summer_Olympics",2, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+
+```{r}
+result_new <- olympic_join("1968", "https://en.wikipedia.org/wiki/Athletics_at_the_1968_Summer_Olympics",2, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("1968", "https://en.wikipedia.org/wiki/Athletics_at_the_1968_Summer_Olympics",3, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+
+```{r}
+result_new <- olympic_join("1964", "https://en.wikipedia.org/wiki/Athletics_at_the_1964_Summer_Olympics",1, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("1964", "https://en.wikipedia.org/wiki/Athletics_at_the_1964_Summer_Olympics",2, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+
+```{r}
+result_new <- olympic_join("1960", "https://en.wikipedia.org/wiki/Athletics_at_the_1960_Summer_Olympics",3, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("1960", "https://en.wikipedia.org/wiki/Athletics_at_the_1960_Summer_Olympics",4, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+
+```{r}
+result_new <- olympic_join("1956", "https://en.wikipedia.org/wiki/Athletics_at_the_1956_Summer_Olympics",2, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("1956", "https://en.wikipedia.org/wiki/Athletics_at_the_1956_Summer_Olympics",3, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+
+```{r}
+result_new <- olympic_join("1952", "https://en.wikipedia.org/wiki/Athletics_at_the_1952_Summer_Olympics",2, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("1952", "https://en.wikipedia.org/wiki/Athletics_at_the_1952_Summer_Olympics",3, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+
+```{r}
+result_new <- olympic_join("1948", "https://en.wikipedia.org/wiki/Athletics_at_the_1948_Summer_Olympics",3, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_new <- olympic_join("1948", "https://en.wikipedia.org/wiki/Athletics_at_the_1948_Summer_Olympics",4, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+```
+
+```{r}
+result_new <- olympic_join("1936", "https://en.wikipedia.org/wiki/Athletics_at_the_1936_Summer_Olympics",3, "M")
+result_m <- result_m %>%
+rbind.data.frame(result_new)
+result_m
+
+result_new <- olympic_join("1936", "https://en.wikipedia.org/wiki/Athletics_at_the_1936_Summer_Olympics",4, "F")
+result_w <- result_w %>%
+rbind.data.frame(result_new)
+result_w
+```
+
+Select columns from women's and men's data frames, eliminating duplicates that were created in the join.
+
+```{r}
+athletics_m_final <- result_m%>%
+select(2:7,10,12:14,17,18)
+athletics_m_final
+
+athletics_w_final <- result_w%>%
+select(2:7,10,12:14,17,18)
+athletics_w_final
+```
+Remove non-numeric notes from the time fields. Convert hms to decimal seconds where needed for both men and women.  Compute BMI = height/weight**2.
+```{r}
+athletics_m_final <-athletics_m_final %>% na.omit() %>%
+    mutate(Time = str_extract(Time,"[0-9':''.']+"))
+
+athletics_m_hms <- athletics_m_final %>%
+  filter(str_detect(athletics_m_final$Time,":")) 
+  athletics_m_hms$Time <- period_to_seconds(hms(athletics_m_hms$Time))
+
+athletics_m_final <- athletics_m_final %>%
+  filter(str_detect(athletics_m_final$Time,":") == "FALSE") %>% 
+rbind(athletics_m_hms)%>%
+arrange(Event)
+head(athletics_m_final)
+
+athletics_w_final <-athletics_w_final %>% na.omit() %>%
+    mutate(Time = str_extract(Time,"[0-9':''.']+"))
+
+athletics_w_hms <- athletics_w_final %>%
+  filter(str_detect(athletics_w_final$Time,":")) 
+  athletics_w_hms$Time <- period_to_seconds(hms(athletics_w_hms$Time))
+
+athletics_w_final <- athletics_w_final %>%
+  filter(str_detect(athletics_w_final$Time,":") == "FALSE") %>% 
+rbind(athletics_w_hms )%>%
+ arrange(Event)
+ head(athletics_w_final)
+```
+
+```{r}
+athletics_m_final$BMI <- as.numeric(athletics_m_final$Weight)/((as.numeric(athletics_m_final$Height)/100)**2)
+athletics_w_final$BMI <-        
+ as.numeric(athletics_w_final$Weight)/((as.numeric(athletics_w_final$Height)/100)**2)
+```
+
+Perform a multi-variate correlation of BMI with Time for both men and women for each of the three designated Athletics Events(Marathon, 100 hundred metres, and 800 metres) Only 100 meter produced a significant correlation, with the p-value of the estimate (approximately 0.018 for the men).  The r_square = 0.2871 was not high enough to conclude that the variation in the speed was solely due to the athlete's BMI.  Clearly, a multi-variate model, including other explanatory variables should be explored.   
+
+```{r}
+marathon_m <- athletics_m_final %>%
+  filter(Event == "Marathon") 
+marathon_lm_m = lm(as.numeric(marathon_m$Time)~marathon_m$BMI)
+  summary(marathon_lm_m)
+```
+
+```{r}
+marathon_w <- athletics_w_final %>%
+  filter(Event == "Marathon") 
+marathon_lm_w = lm(as.numeric(marathon_w$Time)~marathon_w$BMI)
+  summary(marathon_lm_w)
+```
+
+
+```{r}
+hundred_m <- athletics_m_final %>%
+  filter(Event == "100 metres") 
+hundred_lm_m = lm(as.numeric(hundred_m$Time)~hundred_m$BMI)
+  summary(hundred_lm_m)
+```
+
+
+```{r}
+hundred_w <- athletics_w_final %>%
+  filter(Event == "100 metres") 
+hundred_lm_w = lm(as.numeric(hundred_w$Time)~hundred_w$BMI)
+  summary(hundred_lm_w)
+
+```
+
+```{r}
+eight_hundred_m <- athletics_m_final %>%
+  filter(Event == "800 metres") 
+eight_hundred_lm_m = lm(as.numeric(eight_hundred_m$Time)~eight_hundred_m$BMI)
+  summary(eight_hundred_lm_m)
+```
+
+```{r}
+eight_hundred_w <- athletics_w_final %>%
+  filter(Event == "800 metres") 
+eight_hundred_lm_w = lm(as.numeric(eight_hundred_w$Time)~eight_hundred_w$BMI)
+  summary(eight_hundred_lm_w)
+```
+
+Interestingly, the second order component of weight in the formula for BMI results in an improvement in performance (seconds decline) as BMI increases, up until approximately BMI = 25.  Above that value, performance decreases.  Perhaps, a certain amount of muscle mass is optimum to achieve the maximum amount of human speed, but above that BMI, it takes too much force to accelerate the mass.
+```{r}
+ hundred_m_plot<- ggplot(data = hundred_m, aes(BMI, as.numeric(Time))) +xlab("BMI") + ylab("Sec") +
+  geom_point() +
+  ggtitle("Men's 100 Yard Dash Performance vs. BMI") +
+  geom_smooth()
+hundred_m_plot
+```
+
+The comparison of women's BMI to 100 yard dash performance does not replicate this trend, as was anticipated by the high p-value for the estimate and low r_square.
+
+```{r}
+ hundred_w_plot<- ggplot(data = hundred_w, aes(BMI, as.numeric(Time))) +xlab("BMI") + ylab("Sec") +
+  geom_point() +
+  ggtitle("Women's 100 Yard Dash Performance vs. BMI") +
+  geom_smooth()
+hundred_w_plot
+```
+
+
+
+Select columns from Athletics tables for plotting women vs. men's performance over time.
+```{r}
+Olympic_m<- athletics_m_final 
+Olympic_m$Sex = "M"
+
+Olympic_w<- athletics_w_final
+Olympic_w$Sex = "F"
+ 
+Olympics_Athletics <- Olympic_m %>%
+  rbind(Olympic_w) %>%
+  select (9,10,7,2,11,12) 
+  #filter(Rank == "1" )
+Olympics_Athletics
+```
+Plot women's (green) performance against men's performance (red) over time.  Because of the extreme differences in time scale, a facet wrap did not generate meaningful results.  
+
+Women were not allowed to run the Marathon until 1984.  An investigation of the sharp increase in time for the women's Marathon in 1992 was due to a course that finished up a steep incline, sapping their strength at the end of the event.
+```{r}
+marathon <- Olympics_Athletics %>%
+  filter(Event == "Marathon") 
+  marathon$Hours = as.numeric(marathon$Time)/3600
+marathon
+Olympic_perf_plot <- ggplot(data = marathon, aes(Year, Hours, colour=Sex)) +
+  coord_cartesian(ylim=c(2,3)) +
+  geom_point() +
+  ggtitle("Marathon") +
+  geom_smooth()
+Olympic_perf_plot
+```
+ Women began running the 800 m race in 1960.  Initially, their rate of improvement was so much greater than the men's, it appeared that eventually women would cathch the men.  Utlimately, this was not the case as the performance of both sexes plateaued beginning in the 1980s.
+ 
+```{r}
+m800 <- Olympics_Athletics %>%
+  filter(Event == "800 metres") 
+  m800$Sec = as.numeric(m800$Time)/60
+m800
+Olympic_perf_plot <- ggplot(data = m800, aes(Year, Sec, colour=Sex)) +
+  coord_cartesian(ylim=c(100,130)) +
+  geom_point() +
+  ggtitle("800 metres: Olympic Women Performance vs. Men") +
+  geom_smooth()
+Olympic_perf_plot
+```
+
+Women's and men's performance in the 100 m dash has been steadily improving since records were obtained in 1936.  Of note is the outlier, Florence "Flo Jo" Griffith, who continues to hold the world record of 10.49 seconds set in 1988.
+
+```{r}
+m100 <- Olympics_Athletics %>%
+  filter(Event == "100 metres") 
+  m100$Sec = as.numeric(m100$Time)
+  m100
+Olympic_perf_plot <- ggplot(data = m100, aes(Year, Sec, colour=Sex)) +
+  coord_cartesian(ylim=c(9,13)) +
+  geom_point() +
+  ggtitle("100 metres") +
+  geom_smooth()
+Olympic_perf_plot
+```
