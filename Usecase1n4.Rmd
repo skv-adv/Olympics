@@ -1,0 +1,156 @@
+---
+title: "Usecase 1 and 4"
+author: "Sahitee Ramya Y V N " 
+Collobrated with: "Kalai and Cheryl" 
+date: "4/17/2022"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r library, echo=FALSE}
+library(tidyverse)
+library(tidytext)
+library(readxl)
+library(rvest)
+library(httr)
+library(curl)
+library(jsonlite)
+library(ggplot2)
+library(plotly)
+library(choroplethr)
+library(plyr)
+library(stringr)
+library(sqldf)
+library(dplyr)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r echo=TRUE, warning=FALSE}
+#Usecase 1
+kaggle_data <-  read_excel("C:/Users/Dell/Desktop/Rutgers/DataWrangling/Project/athlete_events.xlsx")
+#Usecase 1
+Usecase_1 <- kaggle_data %>% distinct(Year,Season,Sport)
+Usecase_1 <- Usecase_1 %>% select(Year,Season) %>% arrange(Year,Season) %>% count()
+Usecase_1$Year
+plot <- plot_ly(data = Usecase_1, x = ~Year, y = ~freq, type = 'scatter',
+        marker = list(size = 10,
+                      color = 'green',
+                      line = list(color = 'orange',
+                                  width = 2)))
+plot <- plot_ly() %>%
+  add_trace( data = filter(Usecase_1,Season == "Summer"),
+             x = ~Year, y = ~freq, type = 'scatter', 
+             name = 'Summer Sports',
+             marker = list(size = 10,
+                           color = 'red',
+                           line = list(color = 'green',
+                                       width = 2))) %>%
+  add_trace( data = filter(Usecase_1,Season == "Winter"),
+             x = ~Year, y = ~freq, type = 'scatter', 
+             name = 'Winert Sports',
+             marker = list(size = 10,
+                           color = 'yellow',
+                           line = list(color = 'green',
+                                       width = 2)))
+plot <- plot %>% layout(title = 'Number of Summer Vs Winter sport Olympics since 1920',
+                      plot_bgcolor = "#e5ecf6",scale_fill_brewer(palette = "RdYlGn"),
+                      yaxis = list(zeroline = FALSE, title = "Year of Olympics"),
+                      xaxis = list(zeroline = FALSE, title = "Number of Sports"),
+                      legend = list(title=list(text='Legend Title')))
+ggplotly(plot)
+
+#From the plot we can see that the growth in the number of winter sports is very less when compared to the summer sports, and this is due to weather, ease of hosting and the audience turn out not being on the side of winter sports
+```
+
+```{r, echo=TRUE,warning=FALSE}
+#3. Growth in the number of sports and events in Summer & Winter Games – Kaggle Data range from 1896 to 2016
+data(df_pop_country)
+
+Usecase_4 <- kaggle_data %>% select(Team,Sex) 
+Usecase_4 %>% filter(Team == "united states of america")
+Usecase_4 <- Usecase_4 %>% 
+  mutate(Team = str_extract(Team,"[a-zA-Z' ']+")) %>% 
+  mutate(Team = str_to_lower(Team,"[a-zA-Z]+"))
+Usecase_4$Team <- str_replace(Usecase_4$Team, "united states","united states of america")
+Usecase_4 %>% filter(Team == "united states of america")
+
+#4.	Nations (in terms of numbers) participating in Olympics to identify gender distribution 
+result_df <- sqldf("select Team as region, Sex, count(Sex) as value from Usecase_4 Group by Team,Sex")
+Usecase_4 <- as_tibble(result_df)
+
+Usecase_4_M <- Usecase_4 %>% filter(Sex == 'M') %>% select(1,3)
+Usecase_4_M <- inner_join(df_pop_country,Usecase_4_M, by = 'region') %>% select(1,3) 
+Usecase_4_M <- as_tibble(Usecase_4_M)
+Usecase_4_M <- dplyr::rename(Usecase_4_M,value = value.y)
+head(Usecase_4_M)
+Usecase_4_M %>% filter(region == "china")
+country_choropleth(Usecase_4_M)
+
+Usecase_4_F <- Usecase_4 %>% filter(Sex == 'F') %>% select(1,3)
+Usecase_4_F <- inner_join(df_pop_country,Usecase_4_F, by = 'region') %>% select(1,3) 
+Usecase_4_F <- as_tibble(Usecase_4_F)
+Usecase_4_F <- dplyr::rename(Usecase_4_F,value = value.y)
+head(Usecase_4_F)
+Usecase_4_F %>% filter(region == "china")
+country_choropleth(Usecase_4_F)
+
+# The Chloropleth plots of Men and women participation show differences in the scale due to 
+# women entering Olympics later than men. We can also see that there are cases where the men participation is much higher than women participation (like Denmark) or where women participation better than men's participation (like China)
+```
+```{r usecase6	Male vs Female participation over time in Olympics Medal summary}
+rm(Medal_Summary_bynations)
+Medal_Summary_bynations<-read_excel("C:/Users/Dell/Desktop/Rutgers/DataWrangling/Project/athlete_events.xlsx")
+Medal_Summary_bynations <- Medal_Summary_bynations  %>%   filter(Medal != "NA")  %>%  na.omit()
+Medal_Summary_bynations <- Medal_Summary_bynations %>%  
+  filter(Sport != "Art Competitions")  %>%  dplyr::rename(region = Team)  %>%
+  group_by(NOC, Medal, Sport, Year,Sex,region) %>% dplyr::summarise(isMedal=1) %>%
+                           arrange(Medal,Year)
+
+Medal_Summary_bynations <-  Medal_Summary_bynations %>% group_by(Medal,Sex,Year) %>%
+                            dplyr::summarise(Count= sum(isMedal)) %>%  arrange(Year)
+
+
+# TOTAL MEDAL COUNT for Male by Year over time
+Medal_Summary_bynations_Male  <- Medal_Summary_bynations %>% filter(Sex == "M") %>%
+  group_by(Medal,Year,Sex) %>% dplyr::summarise(Total=sum(Count)) %>% arrange(desc(Medal))
+
+## Plot
+plot_Male <- ggplot(Medal_Summary_bynations_Male, aes(x=Year, y= Total , group=(Medal), color=Medal)) +
+  geom_point(size=2) + geom_smooth() +
+  #theme_light() + 
+  #scale_fill_distiller () +
+  labs(x = "Year", y = "Medal Count by Rank",title = "Number of Medals for Male Olympians over time") 
+#+theme(plot.title = element_text(hjust = 0.4))
+plot_Male
+
+
+# TOTAL MEDAL COUNT for Female by Year over time
+Medal_Summary_bynations_Female  <- Medal_Summary_bynations %>% filter(Sex == "F") %>%
+  group_by(Medal,Year,Sex) %>% dplyr::summarise(Total=sum(Count)) %>% arrange(desc(Medal))
+
+## Plot
+
+plot_Female <- ggplot(Medal_Summary_bynations_Female, aes(x=Year, y= Total,group=(Medal), color=Medal)) + geom_point(size=1.5) + geom_smooth(stat = "smooth") + labs(x = "Year", y = "Medal Count by Rank",title = "Number of Medals for Female Olympians over time") 
+#+ theme(plot.title = element_text(hjust = 0.4)) 
+#+  theme_linedraw() 
+#+ scale_fill_distiller ()
+plot_Female
+
+```
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

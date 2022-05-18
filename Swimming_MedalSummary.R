@@ -8,9 +8,14 @@ library(ggplot2)
 library(rvest)
 library(jsonlite)
 library(readxl)
+library(lubridate)
+library(openxlsx)
+library(dplyr)
+library(stringi)
 
 Kaggle_master_data <- read_excel("Kaggle_data.xlsx")
 
+## Medal Summary Integration from Olympics Websites - Web Scraping 
 swimmingscraping_master_data <- read_excel("SwimmingScraping.xlsx")
 
 ## Medal Summary for swim sports by year
@@ -239,6 +244,12 @@ medal_summary_2 <- rbind(Medal_Summary_by_Year_1972[[3]],Medal_Summary_by_Year_1
                     Medal_Summary_by_Year_2004[[6]],Medal_Summary_by_Year_2008[[6]],Medal_Summary_by_Year_2012[[6]],Medal_Summary_by_Year_2016[[6]],
                     Medal_Summary_by_Year_2020[[7]])
 
-final_medal_summary_swimming_df <- rbind(medal_summary_1,medal_summary_2)
-final_medal_summary_swimming_df
+final_medal_summary_swimming_df <- rbind(medal_summary_1,medal_summary_2) %>% 
+  arrange(Nation) %>% summarise(final_medal_summary_swimming_df$Total)
+view(final_medal_summary_swimming_df) 
+
+
+
+
+## Medal Summary Integration from Olympics Websites - Web Scraping 
 
